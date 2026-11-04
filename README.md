@@ -122,3 +122,4 @@ How the merge works is described at the top of `src/sync/merge.ts`. In short: ev
 - MangaDex is run by volunteers. The app keeps requests under its rate limit (~5/s). Please support the scanlation groups and official releases.
 - The chapter language can be changed in **Settings** (English by default).
 - To regenerate the icons: `npm i --no-save sharp && node tools/make-icons.mjs assets`.
+- Pushes to `main` publish an over-the-air update to the `preview` channel via the EAS workflow in `.eas/workflows/`.
