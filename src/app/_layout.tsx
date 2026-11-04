@@ -46,6 +46,7 @@ export default function RootLayout() {
                     name="reader/[chapterId]"
                     options={{ headerShown: false, animation: 'fade', gestureEnabled: true }}
                   />
+                  <Stack.Screen name="profile" options={{ title: 'Profile' }} />
                   <Stack.Screen name="auth/login" options={{ title: 'Sign in', presentation: 'modal' }} />
                   <Stack.Screen name="auth/register" options={{ title: 'Create account', presentation: 'modal' }} />
                 </Stack>

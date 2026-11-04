@@ -18,6 +18,8 @@ An ad-free manga, manhwa and manhua reader for iPhone, built with **React Native
 - **Official-only titles**: some popular titles are licensed, so MangaDex links them to the publisher's site. Those chapters open in an in-app browser, and you can still track progress on them.
 - **Private**: no ads, no tracking. Your library is stored on your phone, and accounts are optional.
 - **Optional account and sync**: sign in with an email and password and your favourites, lists, read chapters and reading position sync through Firebase (Authentication + Firestore). Sign in on a new phone and everything comes back. Each account can only read and write its own data (see the Firestore rules below). Without an account the app works exactly as before.
+- **Profile**: Settings → Account → your name opens a profile where you can change your nickname, email and password, and see your library grouped by Reading, Done, For later and Favourites. Changing the email sends a confirmation link to the new address; the email changes once you open it.
+- **Signing out resets the phone** to a fresh install (empty library, default settings). Your library stays in your account and comes back when you sign in. Before clearing anything the app saves pending changes, and asks first if they could not be saved (for example when offline).
 
 ## Tech stack
 
@@ -113,7 +115,7 @@ service cloud.firestore {
 }
 ```
 
-How the merge works is described at the top of `src/sync/merge.ts`. In short: every change is time-stamped per field and per chapter, so chapters read on two phones are all kept, an explicit "mark as unread" is not undone by another phone, and the newest favourite, status and reading position win. Times come from each phone's clock. Settings are not synced.
+How the merge works is described at the top of `src/sync/merge.ts`. In short: every change is time-stamped per field and per chapter, so chapters read on two phones are all kept, an explicit "mark as unread" is not undone by another phone, and the newest favourite, status and reading position win. Times come from each phone's clock. Settings are not synced: they are reset to their defaults when you sign out and are not restored when you sign in.
 
 ## Notes
 

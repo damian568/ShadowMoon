@@ -204,7 +204,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   );
 }
 
-function Field({ label, error, inputProps, inputRef, right }: {
+export function Field({ label, error, inputProps, inputRef, right }: {
   label: string;
   error?: string;
   inputProps: React.ComponentProps<typeof TextInput>;

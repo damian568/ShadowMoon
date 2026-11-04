@@ -94,6 +94,7 @@ export type Action =
   | { type: 'settings'; patch: Partial<Settings> }
   | { type: 'adoptAccount'; uid: string }
   | { type: 'mergeRemote'; remote: Record<string, SyncedEntry> }
+  | { type: 'resetAll' }
   | { type: 'reset' };
 
 function blankEntry(m: MangaLite): LibraryEntry {
@@ -275,6 +276,10 @@ export function reducer(state: State, action: Action): State {
 
     case 'mergeRemote':
       return { ...state, entries: mergeLibrary(state.entries, action.remote) };
+
+    // Signing out: the phone goes back to how it was on first install (the library stays in the account).
+    case 'resetAll':
+      return { hydrated: true, entries: {}, settings: DEFAULT_SETTINGS, lastUpdateCheck: null, syncedUid: null };
 
     case 'reset':
       return { ...state, entries: {}, lastUpdateCheck: null };
