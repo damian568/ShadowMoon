@@ -16,7 +16,8 @@ An ad-free manga, manhwa and manhua reader for iPhone, built with **React Native
   - Data-saver mode.
 - **Chapter list**: tap ◯ to mark read or unread. Long-press for *mark all previous as read*.
 - **Official-only titles**: some popular titles are licensed, so MangaDex links them to the publisher's site. Those chapters open in an in-app browser, and you can still track progress on them.
-- **Private**: no ads, no account, no tracking. Your library is stored only on your phone.
+- **Private**: no ads, no tracking. Your library is stored on your phone, and accounts are optional.
+- **Optional account and sync**: sign in with an email and password and your favourites, lists, read chapters and reading position sync through Firebase (Authentication + Firestore). Sign in on a new phone and everything comes back. Each account can only read and write its own data (see the Firestore rules below). Without an account the app works exactly as before.
 
 ## Tech stack
 
@@ -27,7 +28,8 @@ An ad-free manga, manhwa and manhua reader for iPhone, built with **React Native
 | Navigation | Expo Router (file-based, `src/app/`) |
 | Backend / data | MangaDex public REST API for titles, chapters and pages (no server of our own needed) |
 | Extra scores | AniList GraphQL API: community score shown on each title page (tap it to open AniList) |
-| Storage | AsyncStorage (on-device) |
+| Storage | AsyncStorage (on-device); optional cloud copy in Firestore (`users/{uid}/library/{title}`) |
+| Accounts | Firebase Authentication (email and password), Firebase JS SDK. Config in `src/firebase/config.ts` |
 | Images | expo-image (memory + disk cache) |
 
 ```
@@ -91,6 +93,27 @@ eas build -p ios --profile preview
 When the build finishes, open the link or QR code on your iPhone and tap **Install**. On iOS 16+ you need to enable **Settings → Privacy & Security → Developer Mode** once.
 
 Alternatively, run `eas build -p ios --profile production` then `eas submit -p ios` to send the build to **TestFlight** and install it from there.
+
+## Accounts and sync (Firebase)
+
+Accounts are optional. To run your own copy with sync:
+
+1. Create a Firebase project, turn on **Authentication → Email/Password**, and create a **Firestore** database in production mode.
+2. Register a **Web app** and paste its config into `src/firebase/config.ts` (these values identify the project; they are not secrets).
+3. Publish these Firestore rules, which let each signed-in user read and write only their own area:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
+```
+
+How the merge works is described at the top of `src/sync/merge.ts`. In short: every change is time-stamped per field and per chapter, so chapters read on two phones are all kept, an explicit "mark as unread" is not undone by another phone, and the newest favourite, status and reading position win. Times come from each phone's clock. Settings are not synced.
 
 ## Notes
 
