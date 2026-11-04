@@ -1,4 +1,5 @@
 import type { Chapter, Manga } from '../providers/types';
+import { mergeLibrary, readLogOf, type SyncedEntry } from '../sync/merge';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,12 @@ export interface LibraryEntry extends MangaLite {
   lastReadAt?: number;
   addedAt: number;
   syncedAt?: number;
+  // --- change times used to merge this entry with the cloud copy (see src/sync/merge.ts) ---
+  /** chapter key -> +time when read, -time when marked unread. */
+  readLog?: Record<string, number>;
+  favoriteAt?: number;
+  statusAt?: number;
+  updatedAt?: number;
 }
 
 export interface Settings {
@@ -47,6 +54,8 @@ export interface State {
   entries: Record<string, LibraryEntry>;
   settings: Settings;
   lastUpdateCheck: number | null;
+  /** The account whose library is stored on this device, once it has been synced (see 'adoptAccount'). */
+  syncedUid?: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -83,6 +92,8 @@ export type Action =
   | { type: 'applyUpdates'; results: UpdateResult[]; at: number }
   | { type: 'remove'; id: string }
   | { type: 'settings'; patch: Partial<Settings> }
+  | { type: 'adoptAccount'; uid: string }
+  | { type: 'mergeRemote'; remote: Record<string, SyncedEntry> }
   | { type: 'reset' };
 
 function blankEntry(m: MangaLite): LibraryEntry {
@@ -99,6 +110,11 @@ function blankEntry(m: MangaLite): LibraryEntry {
     newChapters: 0,
     addedAt: Date.now(),
   };
+}
+
+/** The new status plus its change time (the time only moves when the status really changes). */
+function withStatus(e: LibraryEntry, status: ReadingStatus | null, now: number): Pick<LibraryEntry, 'status' | 'statusAt'> {
+  return { status, statusAt: status !== e.status ? now : e.statusAt };
 }
 
 function withEntry(state: State, m: MangaLite, fn: (e: LibraryEntry) => LibraryEntry): State {
@@ -124,18 +140,25 @@ export function reducer(state: State, action: Action): State {
         hydrated: true,
       };
 
-    case 'toggleFavorite':
-      return withEntry(state, action.manga, (e) => ({ ...e, favorite: !e.favorite }));
+    case 'toggleFavorite': {
+      const now = Date.now();
+      return withEntry(state, action.manga, (e) => ({ ...e, favorite: !e.favorite, favoriteAt: now, updatedAt: now }));
+    }
 
-    case 'setStatus':
-      return withEntry(state, action.manga, (e) => ({ ...e, status: action.status }));
+    case 'setStatus': {
+      const now = Date.now();
+      return withEntry(state, action.manga, (e) => ({ ...e, ...withStatus(e, action.status, now), updatedAt: now }));
+    }
 
-    case 'setRead':
+    case 'setRead': {
+      const now = Date.now();
       return withEntry(state, action.manga, (e) => {
         const set = new Set(e.readChapters);
+        const log = readLogOf(e);
         for (const k of action.keys) {
           if (action.read) set.add(k);
           else set.delete(k);
+          log[k] = action.read ? now : -now;
         }
         // Every known chapter read -> the title is Done. Un-reading one moves it back to Reading.
         const finished = e.totalChapters > 0 && set.size >= e.totalChapters;
@@ -146,27 +169,36 @@ export function reducer(state: State, action: Action): State {
         } else if (status === 'completed' && !finished) {
           status = 'reading';
         }
-        return { ...e, readChapters: [...set], status };
+        return { ...e, readChapters: [...set], readLog: log, ...withStatus(e, status, now), updatedAt: now };
       });
+    }
 
-    case 'openChapter':
+    case 'openChapter': {
+      const now = Date.now();
       return withEntry(state, action.manga, (e) => ({
         ...e,
-        status: e.status === null || e.status === 'later' ? 'reading' : e.status,
+        ...withStatus(e, e.status === null || e.status === 'later' ? 'reading' : e.status, now),
         lastChapterId: action.chapter.id,
         lastChapterKey: action.chapter.key,
         lastChapterLabel: action.chapter.chapter ? `Ch. ${action.chapter.chapter}` : 'Oneshot',
-        lastReadAt: Date.now(),
+        lastReadAt: now,
+        updatedAt: now,
       }));
+    }
 
     case 'syncChapters': {
       const existing = state.entries[action.manga.id];
       if (!existing) return state; // only track things that are in the library
       const last = action.chapters[action.chapters.length - 1];
+      const now = Date.now();
       return withEntry(state, action.manga, (e) => ({
         ...e,
         // Opening a Done title and finding more chapters than before means there is more to read.
-        status: e.status === 'completed' && e.totalChapters > 0 && action.chapters.length > e.totalChapters ? 'reading' : e.status,
+        ...withStatus(
+          e,
+          e.status === 'completed' && e.totalChapters > 0 && action.chapters.length > e.totalChapters ? 'reading' : e.status,
+          now,
+        ),
         totalChapters: action.chapters.length,
         latestChapterLabel: last ? (last.chapter ? `Ch. ${last.chapter}` : 'Oneshot') : e.latestChapterLabel,
         latestChapterAt: last?.readableAt ?? e.latestChapterAt,
@@ -201,7 +233,7 @@ export function reducer(state: State, action: Action): State {
             next.newChapters = e.newChapters + delta;
             next.lastUpdateFoundAt = action.at;
             // New chapters appeared, so a Done title has more to read again.
-            if (e.status === 'completed') next.status = 'reading';
+            if (e.status === 'completed') Object.assign(next, withStatus(e, 'reading', action.at));
           }
         }
         entries[r.id] = next;
@@ -212,7 +244,14 @@ export function reducer(state: State, action: Action): State {
     case 'remove': {
       const e = state.entries[action.id];
       if (!e) return state;
-      return { ...state, entries: { ...state.entries, [action.id]: { ...e, favorite: false, status: null } } };
+      const now = Date.now();
+      return {
+        ...state,
+        entries: {
+          ...state.entries,
+          [action.id]: { ...e, favorite: false, favoriteAt: now, ...withStatus(e, null, now), updatedAt: now },
+        },
+      };
     }
 
     case 'settings': {
@@ -225,6 +264,17 @@ export function reducer(state: State, action: Action): State {
       }
       return { ...state, settings, entries, lastUpdateCheck: null };
     }
+
+    case 'adoptAccount': {
+      if (state.syncedUid === action.uid) return state;
+      // The phone holds another account's library: don't mix it into this account. (A phone that was never
+      // synced, e.g. one used before signing in, keeps its library and merges it into the account instead.)
+      const otherAccount = !!state.syncedUid;
+      return { ...state, entries: otherAccount ? {} : state.entries, syncedUid: action.uid };
+    }
+
+    case 'mergeRemote':
+      return { ...state, entries: mergeLibrary(state.entries, action.remote) };
 
     case 'reset':
       return { ...state, entries: {}, lastUpdateCheck: null };

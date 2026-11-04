@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
 
 import type { Chapter, ContentRating, Manga, MangaType } from '../providers/types';
+import type { SyncedEntry } from '../sync/merge';
 import {
   DEFAULT_SETTINGS,
   reducer,
@@ -33,6 +34,10 @@ interface LibraryApi {
   remove: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   resetLibrary: () => void;
+  /** Used by the sync service: tell the store which account is signed in. */
+  adoptAccount: (uid: string) => void;
+  /** Used by the sync service: merge the library downloaded from the cloud into this one. */
+  mergeRemote: (remote: Record<string, SyncedEntry>) => void;
 }
 
 const Ctx = createContext<LibraryApi | null>(null);
@@ -43,6 +48,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     entries: {},
     settings: DEFAULT_SETTINGS,
     lastUpdateCheck: null,
+    syncedUid: null,
   });
 
   useEffect(() => {
@@ -75,6 +81,8 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       remove: (id) => dispatch({ type: 'remove', id }),
       updateSettings: (patch) => dispatch({ type: 'settings', patch }),
       resetLibrary: () => dispatch({ type: 'reset' }),
+      adoptAccount: (uid) => dispatch({ type: 'adoptAccount', uid }),
+      mergeRemote: (remote) => dispatch({ type: 'mergeRemote', remote }),
     }),
     [state],
   );
