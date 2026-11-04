@@ -38,6 +38,8 @@ interface LibraryApi {
   adoptAccount: (uid: string) => void;
   /** Used by the sync service: merge the library downloaded from the cloud into this one. */
   mergeRemote: (remote: Record<string, SyncedEntry>) => void;
+  /** Back to a fresh install: empty library and default settings. Used when signing out. */
+  resetAll: () => void;
 }
 
 const Ctx = createContext<LibraryApi | null>(null);
@@ -83,6 +85,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       resetLibrary: () => dispatch({ type: 'reset' }),
       adoptAccount: (uid) => dispatch({ type: 'adoptAccount', uid }),
       mergeRemote: (remote) => dispatch({ type: 'mergeRemote', remote }),
+      resetAll: () => dispatch({ type: 'resetAll' }),
     }),
     [state],
   );

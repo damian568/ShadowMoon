@@ -24,6 +24,11 @@ export interface SyncApi {
   error: string | null;
   /** Download and merge now (also uploads anything that differs). */
   syncNow: () => Promise<void>;
+  /**
+   * Upload every change that is still waiting, right now. Resolves true when the account is fully up to date
+   * (or nobody is signed in), false when something could not be saved.
+   */
+  flush: () => Promise<boolean>;
 }
 
 /** Wait this long after the last change before uploading, so a burst of changes is sent together. */
@@ -82,6 +87,32 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
   });
 
+  const flush = useStableCallback(async (): Promise<boolean> => {
+    if (!uid) return true; // nobody is signed in, so there is nothing to lose
+    if (readyUid !== uid) return false; // the account's library was never downloaded: we cannot be sure
+    // Let an upload that is already running finish first (at most ~10 s).
+    for (let i = 0; i < 100 && uploading.current; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    const pending = entriesToUpload(state.entries, known.current);
+    if (pending.length === 0) return true;
+    uploading.current = true;
+    setStatus('syncing');
+    try {
+      await uploadEntries(uid, pending);
+      for (const item of pending) known.current.set(item.id, item.hash);
+      setStatus('synced');
+      setLastSyncedAt(Date.now());
+      setError(null);
+      return true;
+    } catch (e) {
+      setStatus('error');
+      setError(messageOf(e));
+      return false;
+    } finally {
+      uploading.current = false;
+      setTick((t) => t + 1);
+    }
+  });
+
   // Sync when an account signs in (and once the saved library has loaded).
   useEffect(() => {
     if (!uid || !hydrated) return;
@@ -129,8 +160,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt,
       error,
       syncNow,
+      flush,
     }),
-    [uid, status, lastSyncedAt, error, syncNow],
+    [uid, status, lastSyncedAt, error, syncNow, flush],
   );
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;

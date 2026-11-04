@@ -12,6 +12,8 @@ import { getProvider, listProviders } from '../../providers';
 import { useAuth } from '../../store/auth';
 import { useLibrary, type ReaderMode } from '../../store/library';
 import { useSync, type SyncApi } from '../../sync/SyncProvider';
+import { useSignOut } from '../../sync/useSignOut';
+import { nicknameFor } from '../../utils/auth';
 import { timeAgo } from '../../utils/time';
 import { colors, radius, spacing } from '../../theme';
 
@@ -33,20 +35,8 @@ export default function SettingsScreen() {
   const { state, updateSettings, resetLibrary } = useLibrary();
   const auth = useAuth();
   const sync = useSync();
+  const signOut = useSignOut();
   const s = state.settings;
-
-  const confirmSignOut = () =>
-    Alert.alert(
-      'Sign out?',
-      'Your library stays on this phone and stops syncing. Signing in again with the same account picks up where you left off. Signing in with a different account replaces this phone’s library with that account’s.',
-      [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: () => auth.signOut().catch((e: Error) => Alert.alert('Could not sign out', e.message)),
-      },
-    ]);
 
   const confirmReset = () =>
     Alert.alert('Reset library?', 'This removes all favourites, lists and reading progress from this device.', [
@@ -65,14 +55,19 @@ export default function SettingsScreen() {
       <Group title="Account">
         {auth.status === 'signedIn' ? (
           <>
-            <Row icon="person-circle-outline" title={auth.user?.email ?? 'Signed in'} subtitle="Signed in" />
+            <Row
+              icon="person-circle-outline"
+              title={nicknameFor(auth.user)}
+              subtitle={auth.user?.email ?? 'Signed in'}
+              onPress={() => router.push('/profile')}
+            />
             <Row
               icon={sync.status === 'error' ? 'cloud-offline-outline' : 'cloud-done-outline'}
               title="Library sync"
               subtitle={syncSubtitle(sync)}
               onPress={() => sync.syncNow()}
             />
-            <Row icon="log-out-outline" title="Sign out" onPress={confirmSignOut} />
+            <Row icon="log-out-outline" title="Sign out" onPress={signOut} />
           </>
         ) : (
           <>
