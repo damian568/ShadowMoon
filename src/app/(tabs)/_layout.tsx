@@ -9,9 +9,10 @@ import { colors } from '../../theme';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 function icon(active: IconName, inactive: IconName) {
-  return ({ color, focused, size }: { color: ColorValue; focused: boolean; size: number }) => (
-    <Ionicons name={focused ? active : inactive} color={color as string} size={size} />
-  );
+  function TabIcon({ color, focused, size }: { color: ColorValue; focused: boolean; size: number }) {
+    return <Ionicons name={focused ? active : inactive} color={color as string} size={size} />;
+  }
+  return TabIcon;
 }
 
 export default function TabsLayout() {

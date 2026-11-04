@@ -54,11 +54,12 @@ function Reader({ chapterId, mangaId }: { chapterId: string; mangaId: string }) 
   }, [chapterId, mangaId, language, dataSaver]);
 
   // The image server URL expires after a while; re-request it if images start failing.
-  const [freshPages, setFreshPages] = useState<string[] | null>(null);
-  useEffect(() => setFreshPages(null), [chapterId]);
+  // Remember which chapter the refreshed pages belong to, so they are ignored automatically after navigating.
+  const [fresh, setFresh] = useState<{ chapterId: string; pages: string[] } | null>(null);
+  const freshPages = fresh?.chapterId === chapterId ? fresh.pages : null;
   const refreshPages = useCallback(async () => {
     try {
-      setFreshPages(await getChapterPages(mangaId, chapterId, dataSaver));
+      setFresh({ chapterId, pages: await getChapterPages(mangaId, chapterId, dataSaver) });
       setPageToken((t) => t + 1);
     } catch {}
   }, [mangaId, chapterId, dataSaver]);
@@ -231,10 +232,15 @@ function VerticalReader({ pages, onTap, onPage, onImageError, footer }: {
     setRatios((r) => (r[i] === h / w ? r : { ...r, [i]: h / w }));
   }, []);
 
-  const onViewable = useRef(({ viewableItems }: { viewableItems: ListViewToken[] }) => {
+  // FlatList needs a permanent onViewableItemsChanged, so it reads the latest onPage through a ref.
+  const onPageRef = useRef(onPage);
+  useEffect(() => {
+    onPageRef.current = onPage;
+  });
+  const [onViewable] = useState(() => ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
     const last = viewableItems[viewableItems.length - 1];
-    if (last?.index != null) onPage(last.index);
-  }).current;
+    if (last?.index != null) onPageRef.current(last.index);
+  });
 
   return (
     <FlatList
@@ -291,7 +297,7 @@ const VerticalPage = memo(function VerticalPage({ url, index, width, ratio, onLo
           }}
         >
           <Ionicons name="refresh" size={28} color={colors.textMuted} />
-          <Text style={styles.pageNumber}>Couldn't load page {index + 1} · tap to retry</Text>
+          <Text style={styles.pageNumber}>Couldn&apos;t load page {index + 1} · tap to retry</Text>
         </Pressable>
       ) : (
         <Image
@@ -405,7 +411,7 @@ const ZoomPage = memo(function ZoomPage({ url, index, width, height, onPress, on
             }}
           >
             <Ionicons name="refresh" size={28} color={colors.textMuted} />
-            <Text style={styles.pageNumber}>Couldn't load page {index + 1} · tap to retry</Text>
+            <Text style={styles.pageNumber}>Couldn&apos;t load page {index + 1} · tap to retry</Text>
           </Pressable>
         ) : (
           <Image
@@ -444,7 +450,7 @@ function EndCard({ chapter, next, onNext, onDetails, mangaTitle }: {
           style={{ marginTop: spacing.lg, alignSelf: 'stretch' }}
         />
       ) : (
-        <Text style={[styles.endSub, { marginTop: spacing.md }]}>You're all caught up! 🎉</Text>
+        <Text style={[styles.endSub, { marginTop: spacing.md }]}>You&apos;re all caught up! 🎉</Text>
       )}
       <Button label="Back to chapters" variant="secondary" onPress={onDetails} style={{ marginTop: spacing.sm, alignSelf: 'stretch' }} />
     </View>

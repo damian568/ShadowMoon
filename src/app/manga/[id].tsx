@@ -244,7 +244,7 @@ export default function MangaScreen() {
         <View style={styles.notice}>
           <Ionicons name="information-circle" size={18} color={colors.warning} />
           <Text style={styles.noticeText}>
-            This title is officially licensed — chapters open on the publisher's site. You can still track your progress here.
+            This title is officially licensed — chapters open on the publisher&apos;s site. You can still track your progress here.
           </Text>
         </View>
       )}

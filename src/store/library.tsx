@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
 
 import type { Chapter, ContentRating, Manga, MangaType } from '../providers/types';
 import {
@@ -138,8 +138,11 @@ export function useTotalNew() {
   );
 }
 
+/** A function with a permanent identity that always runs the latest `fn` (handy for effects and listeners). */
 export function useStableCallback<T extends (...args: any[]) => any>(fn: T): T {
   const ref = useRef(fn);
-  ref.current = fn;
-  return useCallback(((...args: any[]) => ref.current(...args)) as T, []);
+  useLayoutEffect(() => {
+    ref.current = fn;
+  });
+  return useCallback((...args: Parameters<T>): ReturnType<T> => ref.current(...args), []) as T;
 }

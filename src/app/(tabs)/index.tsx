@@ -118,7 +118,7 @@ function DiscoverSection({ section, refreshKey }: { section: (typeof SECTIONS)[n
       ) : error ? (
         <Pressable style={styles.placeholderRow} onPress={reload}>
           <Text style={{ color: colors.textMuted, textAlign: 'center', paddingHorizontal: spacing.xl }}>
-            Couldn't load · tap to retry{'\n'}
+            Couldn&apos;t load · tap to retry{'\n'}
             <Text style={{ fontSize: 12, color: colors.textDim }}>{error}</Text>
           </Text>
         </Pressable>

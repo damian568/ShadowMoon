@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import React, { useMemo } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { Button, EmptyState, ProgressBar } from '../../components/ui';
@@ -16,10 +16,18 @@ export default function UpdatesScreen() {
   const { state, clearNew } = useLibrary();
   const { checking, progress, error, checkNow } = useUpdates();
 
+  // "Now" is read outside of render (rendering must be pure) and refreshed each time the tab is shown.
+  const [now, setNow] = useState(() => Date.now());
+  useFocusEffect(
+    useCallback(() => {
+      setNow(Date.now());
+    }, []),
+  );
+
   const sections = useMemo(() => {
     const lib = Object.values(state.entries).filter(isInLibrary);
     const fresh = lib.filter((e) => e.newChapters > 0).sort((a, b) => (b.lastUpdateFoundAt ?? 0) - (a.lastUpdateFoundAt ?? 0));
-    const cutoff = Date.now() - RECENT_DAYS * 24 * 3600 * 1000;
+    const cutoff = now - RECENT_DAYS * 24 * 3600 * 1000;
     const recent = lib
       .filter((e) => e.newChapters === 0 && e.latestChapterAt && Date.parse(e.latestChapterAt) > cutoff)
       .sort((a, b) => Date.parse(b.latestChapterAt!) - Date.parse(a.latestChapterAt!));
@@ -27,7 +35,7 @@ export default function UpdatesScreen() {
     if (fresh.length) out.push({ title: 'New chapters', key: 'new', data: fresh });
     if (recent.length) out.push({ title: `Updated in the last ${RECENT_DAYS} days`, key: 'recent', data: recent });
     return out;
-  }, [state.entries]);
+  }, [state.entries, now]);
 
   const libraryCount = useMemo(() => Object.values(state.entries).filter(isInLibrary).length, [state.entries]);
   const hasNew = sections.some((s) => s.key === 'new');

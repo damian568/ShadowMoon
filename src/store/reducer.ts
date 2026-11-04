@@ -1,4 +1,4 @@
-import type { Chapter, Manga, MangaType } from '../providers/types';
+import type { Chapter, Manga } from '../providers/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -133,7 +133,10 @@ export function reducer(state: State, action: Action): State {
     case 'setRead':
       return withEntry(state, action.manga, (e) => {
         const set = new Set(e.readChapters);
-        for (const k of action.keys) (action.read ? set.add(k) : set.delete(k));
+        for (const k of action.keys) {
+          if (action.read) set.add(k);
+          else set.delete(k);
+        }
         // Every known chapter read -> the title is Done. Un-reading one moves it back to Reading.
         const finished = e.totalChapters > 0 && set.size >= e.totalChapters;
         let status = e.status;

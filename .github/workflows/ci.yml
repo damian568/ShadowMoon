@@ -48,13 +48,10 @@ jobs:
           fi
           echo "Working tree is clean."
 
-  # Lint is reported but does not block merging yet: the app code has existing React-hooks rule violations
-  # that are still being worked through. Remove `continue-on-error` once `npm run lint` passes.
   lint:
-    name: Lint (informational)
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

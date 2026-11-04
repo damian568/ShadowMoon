@@ -17,30 +17,37 @@ export function useAsync<T>(fn: (force: boolean) => Promise<T>, deps: unknown[])
   const [refreshing, setRefreshing] = useState(false);
   const callId = useRef(0);
 
-  const run = useCallback(
-    async (force: boolean, asRefresh: boolean) => {
-      const id = ++callId.current;
-      asRefresh ? setRefreshing(true) : setLoading(true);
-      setError(null);
-      try {
-        const result = await fn(force);
-        if (id === callId.current) setData(result);
-      } catch (e: any) {
-        if (id === callId.current) setError(e?.message ?? 'Unknown error');
-      } finally {
-        if (id === callId.current) {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    deps,
-  );
-
+  // Always call the latest `fn` (it closes over the current props), without making `run` change every render.
+  const fnRef = useRef(fn);
   useEffect(() => {
-    run(false, false);
-  }, [run]);
+    fnRef.current = fn;
+  });
+
+  const run = useCallback(async (force: boolean, asRefresh: boolean) => {
+    const id = ++callId.current;
+    if (asRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const result = await fnRef.current(force);
+      if (id === callId.current) setData(result);
+    } catch (e: any) {
+      if (id === callId.current) setError(e?.message ?? 'Unknown error');
+    } finally {
+      if (id === callId.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  // Re-run whenever the caller's `deps` change. It starts on the next tick so the loading state is not set
+  // synchronously inside the effect (`loading` is already true on the first run).
+  useEffect(() => {
+    const t = setTimeout(() => run(false, false), 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, ...deps]);
 
   return {
     data,

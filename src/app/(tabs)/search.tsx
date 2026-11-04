@@ -80,11 +80,14 @@ export default function SearchScreen() {
       .filter((g) => g.items.length > 0);
   }, [grouped, items, sources]);
 
-  // Allow Discover's "See all" to preset filters.
-  useEffect(() => {
+  // Allow Discover's "See all" to preset filters. This adjusts state while rendering (React's recommended way
+  // to react to a changed prop), which also applies the preset on the very first render.
+  const [appliedParams, setAppliedParams] = useState<{ type?: string; order?: string }>({});
+  if (appliedParams.type !== params.type || appliedParams.order !== params.order) {
+    setAppliedParams({ type: params.type, order: params.order });
     if (params.type && TYPES.some((t) => t.key === params.type)) setType(params.type as MangaType | 'all');
     if (params.order && ORDERS.some((o) => o.key === params.order)) setOrder(params.order as SortOrder);
-  }, [params.type, params.order]);
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 400);
@@ -94,7 +97,8 @@ export default function SearchScreen() {
   const load = useCallback(
     async (offset: number) => {
       const id = ++requestId.current;
-      offset === 0 ? setLoading(true) : setLoadingMore(true);
+      if (offset === 0) setLoading(true);
+      else setLoadingMore(true);
       setError(null);
       try {
         const base = {
@@ -139,8 +143,11 @@ export default function SearchScreen() {
     [debounced, type, order, settings, source],
   );
 
+  // Start (or restart) the search whenever a filter changes. It begins on the next tick, so the loading state
+  // is not set synchronously inside the effect; a newer change cancels a search that has not started yet.
   useEffect(() => {
-    load(0);
+    const t = setTimeout(() => load(0), 0);
+    return () => clearTimeout(t);
   }, [load]);
 
   const onEndReached = () => {
