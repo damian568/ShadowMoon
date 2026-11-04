@@ -43,6 +43,23 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "602e1c72-dc91-45b2-9f8a-db4441bfd59a"
+      }
+    },
+    "owner": "damyants",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/602e1c72-dc91-45b2-9f8a-db4441bfd59a"
+    }
   }
 }
