@@ -8,7 +8,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 're
 import { router } from 'expo-router';
 
 import { Chip, SourceIcon } from '../../components/ui';
-import { getProvider, listProviders } from '../../providers';
+import { getProvider, usableProviderId, visibleProviders } from '../../providers';
 import { useAuth } from '../../store/auth';
 import { useLibrary, type ReaderMode } from '../../store/library';
 import { useSync, type SyncApi } from '../../sync/SyncProvider';
@@ -37,6 +37,15 @@ export default function SettingsScreen() {
   const sync = useSync();
   const signOut = useSignOut();
   const s = state.settings;
+
+  // Turning 18+ titles on asks for confirmation first; turning them off needs none.
+  const toggleMature = (on: boolean) => {
+    if (!on) return updateSettings({ showMature: false });
+    Alert.alert('Show 18+ titles?', 'These titles contain adult content. Only turn this on if you are 18 or older.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: "I'm 18 or older", onPress: () => updateSettings({ showMature: true }) },
+    ]);
+  };
 
   const confirmReset = () =>
     Alert.alert('Reset library?', 'This removes all favourites, lists and reading progress from this device.', [
@@ -99,26 +108,26 @@ export default function SettingsScreen() {
         />
       </Group>
 
-      {listProviders().length > 1 && (
+      {visibleProviders(s.showMature).length > 1 && (
         <Group title="Source">
           <View style={styles.chipWrap}>
-            {listProviders().map((p) => (
+            {visibleProviders(s.showMature).map((p) => (
               <Chip
                 key={p.id}
                 label={p.name}
                 leading={<SourceIcon name={p.name} iconUrl={p.iconUrl} />}
-                active={s.provider === p.id}
+                active={usableProviderId(s.provider, s.showMature) === p.id}
                 onPress={() => updateSettings({ provider: p.id })}
               />
             ))}
           </View>
-          <Text style={styles.hint}>{getProvider(s.provider).description} Your library keeps titles from every source.</Text>
+          <Text style={styles.hint}>{getProvider(usableProviderId(s.provider, s.showMature)).description} Your library keeps titles from every source.</Text>
         </Group>
       )}
 
       <Group title="Chapter language">
         <View style={styles.chipWrap}>
-          {getProvider(s.provider).languages.map((l) => (
+          {getProvider(usableProviderId(s.provider, s.showMature)).languages.map((l) => (
             <Chip key={l.code} label={l.label} active={s.language === l.code} onPress={() => updateSettings({ language: l.code })} />
           ))}
         </View>
@@ -144,8 +153,8 @@ export default function SettingsScreen() {
         <Row
           icon="eye-off-outline"
           title="Show mature titles"
-          subtitle="Include titles rated erotica in Discover and Search."
-          right={<Switch value={s.showMature} onValueChange={(v) => updateSettings({ showMature: v })} trackColor={{ true: colors.accentStrong }} />}
+          subtitle="Include 18+ titles (erotica and adult) in Discover and Search. Off by default."
+          right={<Switch value={s.showMature} onValueChange={toggleMature} trackColor={{ true: colors.accentStrong }} />}
         />
       </Group>
 

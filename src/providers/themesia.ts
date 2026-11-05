@@ -20,9 +20,21 @@ export interface ThemesiaSite {
   iconUrl?: string;
   /** URL segment titles live under: "manga" (default) or e.g. "comics". */
   seriesPath?: string;
+  /**
+   * Set to false when the site's robots.txt disallows its search page. Searching then filters a list of every title
+   * that is built (once, then cached) from the browse pages instead.
+   */
+  siteSearch?: boolean;
+  /**
+   * An 18+ site: every title counts as adult, so none of it shows unless "Show mature titles" is on
+   * (even when a title is missing its adult tag).
+   */
+  adultOnly?: boolean;
 }
 
 const PAGE_SIZE = 20;
+const INDEX_TTL = 15 * 60 * 1000;
+const MAX_INDEX_PAGES = 60;
 
 const ORDER: Partial<Record<SortOrder, string>> = {
   followedCount: 'popular',
@@ -125,11 +137,56 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
   const { base, name } = site;
   const seriesPath = site.seriesPath ?? 'manga';
   const get = (url: string) => getHtml(url, name);
+  const adult = (m: Manga): Manga => (site.adultOnly ? { ...m, contentRating: 'pornographic' } : m);
+
+  // --- local search index, for sites that do not allow their own search page to be used ---
+  let index: { at: number; items: Manga[] } | null = null;
+  let indexLoading: Promise<Manga[]> | null = null;
+
+  async function loadIndex(): Promise<Manga[]> {
+    if (index && Date.now() - index.at < INDEX_TTL) return index.items;
+    indexLoading ??= (async () => {
+      const all = new Map<string, Manga>();
+      for (let page = 1; page <= MAX_INDEX_PAGES; page++) {
+        let doc: HTMLElement;
+        try {
+          doc = await get(`${base}/${seriesPath}/?page=${page}&order=popular`);
+        } catch (e) {
+          if (page === 1) throw e;
+          break; // keep what we have
+        }
+        const cards = doc
+          .querySelectorAll('.bsx')
+          .map((card) => parseCard(card, seriesPath))
+          .filter((m): m is Manga => !!m)
+          .map(adult);
+        for (const m of cards) if (!all.has(m.id)) all.set(m.id, m);
+        if (cards.length === 0 || !doc.querySelector('a.next.page-numbers, .hpage a.r, a[rel="next"]')) break;
+      }
+      index = { at: Date.now(), items: [...all.values()] };
+      return index.items;
+    })().finally(() => {
+      indexLoading = null;
+    });
+    return indexLoading;
+  }
+
+  async function searchLocal(title: string, opts: SearchOptions): Promise<Page<Manga>> {
+    const offset = opts.offset ?? 0;
+    const words = title.toLowerCase().split(/\s+/).filter(Boolean);
+    let matches = (await loadIndex()).filter((m) => words.every((w) => m.title.toLowerCase().includes(w)));
+    // Titles whose type is unknown are kept; the registry looks the real type up (see searchManga).
+    if (opts.type && opts.type !== 'all') matches = matches.filter((m) => m.type === 'other' || m.type === opts.type);
+    const allowed = new Set(opts.ratings);
+    matches = matches.filter((m) => allowed.has(m.contentRating));
+    return { items: matches.slice(offset, offset + PAGE_SIZE), total: matches.length, offset, limit: PAGE_SIZE };
+  }
 
   async function search(opts: SearchOptions): Promise<Page<Manga>> {
     const offset = opts.offset ?? 0;
     const page = Math.floor(offset / PAGE_SIZE) + 1;
     const title = opts.title?.trim();
+    if (title && site.siteSearch === false) return searchLocal(title, opts);
 
     // The listing can filter by type on the server (the value is capitalised: "Manhwa"). Search results can't.
     const typeFilter = opts.type && opts.type !== 'all' && opts.type !== 'other' ? opts.type : undefined;
@@ -143,13 +200,17 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
     let items = doc
       .querySelectorAll('.bsx')
       .map((card) => parseCard(card, seriesPath))
-      .filter((m): m is Manga => !!m);
+      .filter((m): m is Manga => !!m)
+      .map(adult);
     if (typeFilter && !title) {
       // The server already filtered, so cards that don't show their type are of the requested type.
       items = items.map((m) => (m.type === 'other' ? { ...m, type: typeFilter } : m));
     }
     // Titles whose type is still unknown are kept here; the registry looks the real type up (see searchManga).
     if (opts.type && opts.type !== 'all') items = items.filter((m) => m.type === 'other' || m.type === opts.type);
+    // Cards carry no rating, so only an adult-only site can be told apart here; its titles need the mature setting.
+    const allowed = new Set(opts.ratings);
+    items = items.filter((m) => allowed.has(m.contentRating));
 
     const hasNext = !!doc.querySelector('a.next.page-numbers, .hpage a.r, a[rel="next"]');
     const loaded = offset + items.length;
@@ -168,7 +229,7 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
     m.tags = [...new Set(doc.querySelectorAll('.mgen a, .seriestugenre a').map((a) => text(a)).filter(Boolean))];
     m.type = typeFrom(info['type'] ?? m.tags.find((t) => typeFrom(t) !== 'other'));
     m.pubStatus = statusFrom(info['status']);
-    m.contentRating = ratingFromTags(m.tags);
+    m.contentRating = site.adultOnly ? 'pornographic' : ratingFromTags(m.tags);
     const year = parseInt(info['released'] ?? '', 10);
     m.year = Number.isFinite(year) ? year : null;
     m.authors = [...new Set([info['author'], info['artist']].filter((x): x is string => !!x).flatMap((x) => x.split(/[,;/]/).map((s) => s.trim()).filter(Boolean)))];
@@ -244,7 +305,7 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
     }
     // Fallback: plain <img> tags in the reading area.
     const urls = [...html.matchAll(/<img[^>]+(?:data-src|src)="([^"]+)"[^>]*class="[^"]*ts-main-image[^"]*"/g)].map((x) => x[1]);
-    if (urls.length === 0) throw new Error('No pages found for this chapter.');
+    if (urls.length === 0) throw new Error('No pages found for this chapter. It may be locked (paid) on the website.');
     return urls;
   }
 
@@ -256,6 +317,7 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
     languages: [{ code: 'en', label: 'English' }],
     types: ['manga', 'manhwa', 'manhua'],
     sorts: ['relevance', 'followedCount', 'latestUploadedChapter', 'rating', 'createdAt'],
+    adult: site.adultOnly,
     search,
     getManga,
     getChapters,
@@ -280,7 +342,25 @@ export const thunderscansProvider = createThemesiaProvider({
   iconUrl: 'https://en-thunderscans.com/wp-content/uploads/2023/12/cropped-EN-TH-WEB-192x192.png',
 });
 
-export const arenascanProvider = createThemesiaProvider({
+export const rokariProvider = createThemesiaProvider({
+  id: 'rokari',
+  name: 'Rokari Comics',
+  description: 'Manhwa, manhua and manga from rokaricomics.com (English). Search uses a cached list of the whole site.',
+  base: 'https://rokaricomics.com',
+  siteSearch: false, // robots.txt disallows /?s= and /search/
+  iconUrl: 'https://rokaricomics.com/wp-content/uploads/2025/06/cropped-Untitled_Artwork-2-192x192.png',
+});
+
+export const hentai20Provider = createThemesiaProvider({
+  id: 'hentai20',
+  name: 'Hentai20',
+  description: '18+ manhwa from hentai20.io (English). Only shown when "Show mature titles" is on.',
+  base: 'https://hentai20.io',
+  adultOnly: true,
+  iconUrl: 'https://hentai20.io/wp-content/uploads/2024/05/cropped-210da20ddb1be20edd43583bcaf1061f628cbc16-300x300.jpg',
+});
+
+export const arenascanProvider =createThemesiaProvider({
   id: 'arenascan',
   name: 'Arena Scans',
   description: 'Manhwa and manhua from arenascan.com (English). Parsed from the website.',

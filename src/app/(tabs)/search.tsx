@@ -16,10 +16,11 @@ import {
 
 import {
   getProvider,
-  listProviders,
   searchAll,
   searchManga,
   splitId,
+  usableProviderId,
+  visibleProviders,
   type Manga,
   type MangaType,
   type MultiSearchState,
@@ -49,12 +50,14 @@ const COLUMNS = 3;
 const PAGE = 30;
 
 export default function SearchScreen() {
-  const params = useLocalSearchParams<{ type?: string; order?: string }>();
+  const params = useLocalSearchParams<{ type?: string; order?: string; q?: string; n?: string }>();
   const [settings] = useSettings();
   // 'all' searches every source at once when you type a title; browsing (no title) uses your chosen source.
-  const [source, setSource] = useState<string>('all');
-  const sources = listProviders();
-  const provider = getProvider(source === 'all' ? settings.provider : source);
+  const [chosenSource, setSource] = useState<string>('all');
+  // 18+ sources are left out entirely while "Show mature titles" is off.
+  const sources = visibleProviders(settings.showMature);
+  const source = chosenSource === 'all' || sources.some((p) => p.id === chosenSource) ? chosenSource : 'all';
+  const provider = getProvider(source === 'all' ? usableProviderId(settings.provider, settings.showMature) : source);
   const { width } = useWindowDimensions();
   const cardWidth = Math.floor((width - spacing.lg * 2 - spacing.md * (COLUMNS - 1)) / COLUMNS);
 
@@ -82,9 +85,16 @@ export default function SearchScreen() {
 
   // Allow Discover's "See all" to preset filters. This adjusts state while rendering (React's recommended way
   // to react to a changed prop), which also applies the preset on the very first render.
-  const [appliedParams, setAppliedParams] = useState<{ type?: string; order?: string }>({});
-  if (appliedParams.type !== params.type || appliedParams.order !== params.order) {
-    setAppliedParams({ type: params.type, order: params.order });
+  const [appliedParams, setAppliedParams] = useState<{ type?: string; order?: string; n?: string }>({});
+  if (appliedParams.type !== params.type || appliedParams.order !== params.order || appliedParams.n !== params.n) {
+    setAppliedParams({ type: params.type, order: params.order, n: params.n });
+    // "Search in app" (long-press on a title): type the title in and search every source right away.
+    if (params.q && params.n !== appliedParams.n) {
+      setQuery(params.q);
+      setDebounced(params.q.trim());
+      setSource('all');
+      setType('all');
+    }
     if (params.type && TYPES.some((t) => t.key === params.type)) setType(params.type as MangaType | 'all');
     if (params.order && ORDERS.some((o) => o.key === params.order)) setOrder(params.order as SortOrder);
   }
@@ -120,7 +130,7 @@ export default function SearchScreen() {
           setHasMore(res.hasMore);
           setTotal(0);
         } else {
-          const page = await searchManga({ ...base, provider: source === 'all' ? settings.provider : source, offset });
+          const page = await searchManga({ ...base, provider: source === 'all' ? usableProviderId(settings.provider, settings.showMature) : source, offset });
           if (id !== requestId.current) return;
           pageItems = page.items;
           setHasMore(offset + page.items.length < page.total);
@@ -192,12 +202,12 @@ export default function SearchScreen() {
             {externalSites.map((site) => (
               <Chip
                 key={site.id}
-                label={debounced ? `Search “${debounced}” on ${site.name}` : `Open ${site.name}`}
+                label={debounced && site.searchUrl ? `Search “${debounced}” on ${site.name}` : `Open ${site.name}`}
                 leading={<SourceIcon name={site.name} iconUrl={site.iconUrl} />}
                 icon="open-outline"
                 color={colors.moon}
                 onPress={() =>
-                  WebBrowser.openBrowserAsync(debounced ? site.searchUrl(debounced) : site.homeUrl).catch(() => {})
+                  WebBrowser.openBrowserAsync(debounced && site.searchUrl ? site.searchUrl(debounced) : site.homeUrl).catch(() => {})
                 }
               />
             ))}
@@ -252,7 +262,7 @@ export default function SearchScreen() {
                 />
               </View>
             ) : (
-              <MangaCard manga={item} width={cardWidth} source={sources.length > 1 ? splitId(item.id).provider.name : undefined} />
+              <MangaCard manga={item} width={cardWidth} />
             )
           }
           columnWrapperStyle={grouped ? undefined : { gap: spacing.md, paddingHorizontal: spacing.lg }}

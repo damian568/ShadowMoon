@@ -15,6 +15,8 @@ import {
   searchAll,
   searchManga,
   splitId,
+  usableProviderId,
+  visibleProviders,
 } from '../providers';
 import type { Manga, Provider } from '../providers/types';
 import { fakeManga, fakeProvider, pageOf, searchOpts } from './helpers';
@@ -26,10 +28,16 @@ jest.mock('../providers/mangadex', () => ({ mangadexProvider: require('./helpers
 jest.mock('../providers/mangaread', () => ({ mangareadProvider: require('./helpers').fakeProvider('mangaread') }));
 jest.mock('../providers/vortex', () => ({ vortexProvider: require('./helpers').fakeProvider('vortex') }));
 jest.mock('../providers/asura', () => ({ asuraProvider: require('./helpers').fakeProvider('asura') }));
+jest.mock('../providers/mgeko', () => ({ mgekoProvider: require('./helpers').fakeProvider('mgeko') }));
+jest.mock('../providers/manga18club', () => ({ manga18clubProvider: require('./helpers').fakeProvider('manga18club', { adult: true }) }));
+jest.mock('../providers/manhwa18', () => ({ manhwa18Provider: require('./helpers').fakeProvider('manhwa18', { adult: true }) }));
+jest.mock('../providers/rinko', () => ({ rinkoProvider: require('./helpers').fakeProvider('rinko') }));
 jest.mock('../providers/themesia', () => ({
   kingofshojoProvider: require('./helpers').fakeProvider('kingofshojo'),
   arenascanProvider: require('./helpers').fakeProvider('arenascan'),
   thunderscansProvider: require('./helpers').fakeProvider('thunderscans'),
+  rokariProvider: require('./helpers').fakeProvider('rokari'),
+  hentai20Provider: require('./helpers').fakeProvider('hentai20', { adult: true }),
 }));
 /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -47,6 +55,37 @@ beforeEach(() => {
 
 const m = (id: string, over: Partial<Manga> = {}) => fakeManga(id, over);
 const ids = (items: Manga[]) => items.map((x) => x.id);
+
+// --- 18+ sources -------------------------------------------------------------
+
+describe('18+ sources', () => {
+  const adultIds = ['hentai20', 'manhwa18', 'manga18club'];
+
+  it('are left out of the visible sources while mature titles are off, and shown when on', () => {
+    const off = visibleProviders(false).map((p) => p.id);
+    const on = visibleProviders(true).map((p) => p.id);
+    for (const id of adultIds) {
+      expect(off).not.toContain(id);
+      expect(on).toContain(id);
+    }
+    expect(off).toContain('mangadex');
+  });
+
+  it('make a chosen 18+ source fall back to the default one while mature titles are off', () => {
+    expect(usableProviderId('hentai20', false)).toBe('mangadex');
+    expect(usableProviderId('hentai20', true)).toBe('hentai20');
+    expect(usableProviderId('mangaread', false)).toBe('mangaread');
+    expect(usableProviderId(undefined, false)).toBe('mangadex');
+  });
+
+  it('are not asked at all by a search across all sources unless mature titles are allowed', async () => {
+    await searchAll(searchOpts({ title: 'x', ratings: ['safe', 'suggestive'] }));
+    for (const id of adultIds) expect(search(id)).not.toHaveBeenCalled();
+    expect(search('mangadex')).toHaveBeenCalled();
+    await searchAll(searchOpts({ title: 'x' })); // all ratings, including adult
+    for (const id of adultIds) expect(search(id)).toHaveBeenCalled();
+  });
+});
 
 // --- ids ---------------------------------------------------------------------
 

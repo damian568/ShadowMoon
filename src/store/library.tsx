@@ -110,7 +110,8 @@ export function useSettings() {
 }
 
 export function contentRatings(settings: Settings): ContentRating[] {
-  return settings.showMature ? ['safe', 'suggestive', 'erotica'] : ['safe', 'suggestive'];
+  // 18+ titles (erotica and adult) only appear when "Show mature titles" is on.
+  return settings.showMature ? ['safe', 'suggestive', 'erotica', 'pornographic'] : ['safe', 'suggestive'];
 }
 
 // ---------------------------------------------------------------------------
