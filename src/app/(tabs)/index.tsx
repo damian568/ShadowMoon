@@ -5,7 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getProvider, searchManga, type Manga, type MangaType, type SortOrder } from '../../providers';
+import { getProvider, searchManga, usableProviderId, type Manga, type MangaType, type SortOrder } from '../../providers';
 import { MangaCard } from '../../components/MangaCard';
 import { ProgressBar, SectionHeader } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
@@ -23,7 +23,7 @@ const SECTIONS: { key: string; title: string; subtitle: string; type: MangaType 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const { state } = useLibrary();
-  const provider = getProvider(state.settings.provider);
+  const provider = getProvider(usableProviderId(state.settings.provider, state.settings.showMature));
   const [refreshKey, setRefreshKey] = useState(0);
 
   const continueReading = useMemo(
@@ -87,7 +87,7 @@ function DiscoverSection({ section, refreshKey }: { section: (typeof SECTIONS)[n
   const { data, loading, error, reload } = useAsync<Manga[]>(
     () =>
       searchManga({
-        provider: settings.provider,
+        provider: usableProviderId(settings.provider, settings.showMature),
         type: section.type,
         order: section.order,
         language: settings.language,

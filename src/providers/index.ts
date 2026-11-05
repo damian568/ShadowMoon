@@ -14,7 +14,9 @@ import { mangareadProvider } from './mangaread';
 import { asuraProvider } from './asura';
 import { rinkoProvider } from './rinko';
 import { mgekoProvider } from './mgeko';
-import { arenascanProvider, kingofshojoProvider, rokariProvider, thunderscansProvider } from './themesia';
+import { manga18clubProvider } from './manga18club';
+import { manhwa18Provider } from './manhwa18';
+import { arenascanProvider, hentai20Provider, kingofshojoProvider, rokariProvider, thunderscansProvider } from './themesia';
 import { vortexProvider } from './vortex';
 import type { Chapter, Manga, MangaStats, MangaType, Page, Provider, SearchOptions } from './types';
 
@@ -22,7 +24,7 @@ export * from './types';
 
 export const DEFAULT_PROVIDER_ID = mangadexProvider.id;
 
-const providers: Provider[] = [mangadexProvider, mangareadProvider, kingofshojoProvider, arenascanProvider, vortexProvider, asuraProvider, thunderscansProvider, mgekoProvider, rokariProvider, rinkoProvider];
+const providers: Provider[] = [mangadexProvider, mangareadProvider, kingofshojoProvider, arenascanProvider, vortexProvider, asuraProvider, thunderscansProvider, mgekoProvider, rokariProvider, rinkoProvider, hentai20Provider, manhwa18Provider, manga18clubProvider];
 
 /** Add a new source. Call once at startup (see README, "Adding a provider"). */
 export function registerProvider(p: Provider) {
@@ -32,6 +34,13 @@ export function registerProvider(p: Provider) {
 }
 
 export const listProviders = (): readonly Provider[] => providers;
+
+/** The sources to show in the app. 18+ sources are left out unless mature titles are switched on. */
+export const visibleProviders = (showMature: boolean): readonly Provider[] => providers.filter((p) => showMature || !p.adult);
+
+/** The id to actually use: a chosen 18+ source falls back to the default one while mature titles are off. */
+export const usableProviderId = (id: string | undefined, showMature: boolean): string =>
+  visibleProviders(showMature).some((p) => p.id === id) ? id! : DEFAULT_PROVIDER_ID;
 
 export function getProvider(id: string | undefined): Provider {
   return providers.find((p) => p.id === id) ?? providers.find((p) => p.id === DEFAULT_PROVIDER_ID)!;
@@ -96,7 +105,9 @@ export async function searchAll(
   opts: SearchOptions,
   state: MultiSearchState = { offsets: {}, done: [] },
 ): Promise<{ items: Manga[]; state: MultiSearchState; hasMore: boolean }> {
-  const active = providers.filter((p) => !state.done.includes(p.id) && p.languages.some((l) => l.code === opts.language));
+  const mature = opts.ratings.includes('pornographic'); // 18+ sources only take part when mature titles are on
+  const usable = (p: Provider) => !state.done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult);
+  const active = providers.filter(usable);
   const settled = await Promise.allSettled(
     active.map((p) => searchManga({ ...opts, provider: p.id, offset: state.offsets[p.id] ?? 0 })),
   );
@@ -126,7 +137,7 @@ export async function searchAll(
   for (let i = 0; lists.some((l) => i < l.length); i++) {
     for (const l of lists) if (i < l.length) items.push(l[i]);
   }
-  const hasMore = providers.some((p) => !done.includes(p.id) && p.languages.some((l) => l.code === opts.language));
+  const hasMore = providers.some((p) => !done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult));
   return { items, state: { offsets, done }, hasMore };
 }
 

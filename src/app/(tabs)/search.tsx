@@ -16,10 +16,11 @@ import {
 
 import {
   getProvider,
-  listProviders,
   searchAll,
   searchManga,
   splitId,
+  usableProviderId,
+  visibleProviders,
   type Manga,
   type MangaType,
   type MultiSearchState,
@@ -52,9 +53,11 @@ export default function SearchScreen() {
   const params = useLocalSearchParams<{ type?: string; order?: string; q?: string; n?: string }>();
   const [settings] = useSettings();
   // 'all' searches every source at once when you type a title; browsing (no title) uses your chosen source.
-  const [source, setSource] = useState<string>('all');
-  const sources = listProviders();
-  const provider = getProvider(source === 'all' ? settings.provider : source);
+  const [chosenSource, setSource] = useState<string>('all');
+  // 18+ sources are left out entirely while "Show mature titles" is off.
+  const sources = visibleProviders(settings.showMature);
+  const source = chosenSource === 'all' || sources.some((p) => p.id === chosenSource) ? chosenSource : 'all';
+  const provider = getProvider(source === 'all' ? usableProviderId(settings.provider, settings.showMature) : source);
   const { width } = useWindowDimensions();
   const cardWidth = Math.floor((width - spacing.lg * 2 - spacing.md * (COLUMNS - 1)) / COLUMNS);
 
@@ -127,7 +130,7 @@ export default function SearchScreen() {
           setHasMore(res.hasMore);
           setTotal(0);
         } else {
-          const page = await searchManga({ ...base, provider: source === 'all' ? settings.provider : source, offset });
+          const page = await searchManga({ ...base, provider: source === 'all' ? usableProviderId(settings.provider, settings.showMature) : source, offset });
           if (id !== requestId.current) return;
           pageItems = page.items;
           setHasMore(offset + page.items.length < page.total);
@@ -199,12 +202,12 @@ export default function SearchScreen() {
             {externalSites.map((site) => (
               <Chip
                 key={site.id}
-                label={debounced ? `Search “${debounced}” on ${site.name}` : `Open ${site.name}`}
+                label={debounced && site.searchUrl ? `Search “${debounced}” on ${site.name}` : `Open ${site.name}`}
                 leading={<SourceIcon name={site.name} iconUrl={site.iconUrl} />}
                 icon="open-outline"
                 color={colors.moon}
                 onPress={() =>
-                  WebBrowser.openBrowserAsync(debounced ? site.searchUrl(debounced) : site.homeUrl).catch(() => {})
+                  WebBrowser.openBrowserAsync(debounced && site.searchUrl ? site.searchUrl(debounced) : site.homeUrl).catch(() => {})
                 }
               />
             ))}

@@ -333,3 +333,26 @@ describe('search without the site search (local index)', () => {
     expect(f.mock.calls[0][0]).toBe(`${BASE}/?s=love`);
   });
 });
+
+describe('adult-only sites', () => {
+  const adultSite = () => createThemesiaProvider({ id: 'adult', name: 'Adult Site', description: 'd', base: BASE, adultOnly: true });
+
+  it('marks every title as adult, so it only shows when mature titles are allowed', async () => {
+    mockFetch([['/manga/', listing(card('a', 'A') + card('b', 'B'))]]);
+    const hidden = await adultSite().search(searchOpts({ ratings: ['safe', 'suggestive'] }));
+    expect(hidden.items).toEqual([]);
+    mockFetch([['/manga/', listing(card('a', 'A') + card('b', 'B'))]]);
+    const shown = await adultSite().search(searchOpts({ ratings: ['safe', 'suggestive', 'erotica', 'pornographic'] }));
+    expect(shown.items.map((m) => [m.id, m.contentRating])).toEqual([['a', 'pornographic'], ['b', 'pornographic']]);
+  });
+
+  it('marks the title page as adult even without an adult tag', async () => {
+    mockFetch([['/manga/test-title/', titlePage()]]);
+    expect((await adultSite().getManga('test-title')).contentRating).toBe('pornographic');
+  });
+
+  it('leaves other sites unchanged', async () => {
+    mockFetch([['/manga/', listing(card('a', 'A'))]]);
+    expect((await site.search(searchOpts({ ratings: ['safe'] }))).items).toHaveLength(1);
+  });
+});

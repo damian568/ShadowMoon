@@ -85,6 +85,8 @@ export interface Provider {
   types: MangaType[];
   /** Which sort orders the source supports (the UI hides the others). */
   sorts: SortOrder[];
+  /** An 18+ source: hidden everywhere (lists, search, Discover) unless "Show mature titles" is on. */
+  adult?: boolean;
 
   search(opts: SearchOptions): Promise<Page<Manga>>;
   getManga(id: string): Promise<Manga>;
