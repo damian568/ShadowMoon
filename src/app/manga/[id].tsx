@@ -24,6 +24,7 @@ import {
   getMangaCached,
   getStats,
   isReadable,
+  splitId,
   type Chapter,
   type MangaStats,
 } from '../../providers';
@@ -39,6 +40,7 @@ import {
   type ReadingStatus,
 } from '../../store/library';
 import { colors, radius, spacing, statusColors, statusLabels, typeColors } from '../../theme';
+import { showTitleActions } from '../../utils/titleActions';
 import { shortDate } from '../../utils/time';
 
 const STATUS_BUTTONS: { key: ReadingStatus; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -185,8 +187,11 @@ export default function MangaScreen() {
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
             <Pill label={manga.type === 'other' ? 'Comic' : capitalize(manga.type)} color={typeColors[manga.type]} />
             <Pill label={capitalize(manga.pubStatus)} color={manga.pubStatus === 'ongoing' ? colors.success : colors.textMuted} />
+            <Pill label={splitId(manga.id).provider.name} color={colors.accent} />
           </View>
-          <Text style={styles.title} numberOfLines={4}>{manga.title}</Text>
+          <Pressable onLongPress={() => showTitleActions(manga.title)}>
+            <Text style={styles.title} numberOfLines={4}>{manga.title}</Text>
+          </Pressable>
           {manga.authors.length > 0 && <Text style={styles.authors} numberOfLines={1}>{manga.authors.join(', ')}</Text>}
           <View style={styles.metaRow}>
             {stats.data?.rating ? <Meta icon="star" text={stats.data.rating.toFixed(1)} color={colors.warning} /> : null}

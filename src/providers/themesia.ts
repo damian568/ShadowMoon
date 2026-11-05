@@ -20,9 +20,16 @@ export interface ThemesiaSite {
   iconUrl?: string;
   /** URL segment titles live under: "manga" (default) or e.g. "comics". */
   seriesPath?: string;
+  /**
+   * Set to false when the site's robots.txt disallows its search page. Searching then filters a list of every title
+   * that is built (once, then cached) from the browse pages instead.
+   */
+  siteSearch?: boolean;
 }
 
 const PAGE_SIZE = 20;
+const INDEX_TTL = 15 * 60 * 1000;
+const MAX_INDEX_PAGES = 60;
 
 const ORDER: Partial<Record<SortOrder, string>> = {
   followedCount: 'popular',
@@ -126,10 +133,53 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
   const seriesPath = site.seriesPath ?? 'manga';
   const get = (url: string) => getHtml(url, name);
 
+  // --- local search index, for sites that do not allow their own search page to be used ---
+  let index: { at: number; items: Manga[] } | null = null;
+  let indexLoading: Promise<Manga[]> | null = null;
+
+  async function loadIndex(): Promise<Manga[]> {
+    if (index && Date.now() - index.at < INDEX_TTL) return index.items;
+    indexLoading ??= (async () => {
+      const all = new Map<string, Manga>();
+      for (let page = 1; page <= MAX_INDEX_PAGES; page++) {
+        let doc: HTMLElement;
+        try {
+          doc = await get(`${base}/${seriesPath}/?page=${page}&order=popular`);
+        } catch (e) {
+          if (page === 1) throw e;
+          break; // keep what we have
+        }
+        const cards = doc
+          .querySelectorAll('.bsx')
+          .map((card) => parseCard(card, seriesPath))
+          .filter((m): m is Manga => !!m);
+        for (const m of cards) if (!all.has(m.id)) all.set(m.id, m);
+        if (cards.length === 0 || !doc.querySelector('a.next.page-numbers, .hpage a.r, a[rel="next"]')) break;
+      }
+      index = { at: Date.now(), items: [...all.values()] };
+      return index.items;
+    })().finally(() => {
+      indexLoading = null;
+    });
+    return indexLoading;
+  }
+
+  async function searchLocal(title: string, opts: SearchOptions): Promise<Page<Manga>> {
+    const offset = opts.offset ?? 0;
+    const words = title.toLowerCase().split(/\s+/).filter(Boolean);
+    let matches = (await loadIndex()).filter((m) => words.every((w) => m.title.toLowerCase().includes(w)));
+    // Titles whose type is unknown are kept; the registry looks the real type up (see searchManga).
+    if (opts.type && opts.type !== 'all') matches = matches.filter((m) => m.type === 'other' || m.type === opts.type);
+    const allowed = new Set(opts.ratings);
+    matches = matches.filter((m) => allowed.has(m.contentRating));
+    return { items: matches.slice(offset, offset + PAGE_SIZE), total: matches.length, offset, limit: PAGE_SIZE };
+  }
+
   async function search(opts: SearchOptions): Promise<Page<Manga>> {
     const offset = opts.offset ?? 0;
     const page = Math.floor(offset / PAGE_SIZE) + 1;
     const title = opts.title?.trim();
+    if (title && site.siteSearch === false) return searchLocal(title, opts);
 
     // The listing can filter by type on the server (the value is capitalised: "Manhwa"). Search results can't.
     const typeFilter = opts.type && opts.type !== 'all' && opts.type !== 'other' ? opts.type : undefined;
@@ -244,7 +294,7 @@ export function createThemesiaProvider(site: ThemesiaSite): Provider {
     }
     // Fallback: plain <img> tags in the reading area.
     const urls = [...html.matchAll(/<img[^>]+(?:data-src|src)="([^"]+)"[^>]*class="[^"]*ts-main-image[^"]*"/g)].map((x) => x[1]);
-    if (urls.length === 0) throw new Error('No pages found for this chapter.');
+    if (urls.length === 0) throw new Error('No pages found for this chapter. It may be locked (paid) on the website.');
     return urls;
   }
 
@@ -278,6 +328,15 @@ export const thunderscansProvider = createThemesiaProvider({
   base: 'https://en-thunderscans.com',
   seriesPath: 'comics',
   iconUrl: 'https://en-thunderscans.com/wp-content/uploads/2023/12/cropped-EN-TH-WEB-192x192.png',
+});
+
+export const rokariProvider = createThemesiaProvider({
+  id: 'rokari',
+  name: 'Rokari Comics',
+  description: 'Manhwa, manhua and manga from rokaricomics.com (English). Search uses a cached list of the whole site.',
+  base: 'https://rokaricomics.com',
+  siteSearch: false, // robots.txt disallows /?s= and /search/
+  iconUrl: 'https://rokaricomics.com/wp-content/uploads/2025/06/cropped-Untitled_Artwork-2-192x192.png',
 });
 
 export const arenascanProvider = createThemesiaProvider({

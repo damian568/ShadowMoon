@@ -65,6 +65,22 @@ export function imgUrl(img: HTMLElement | null | undefined): string {
   return url.startsWith('//') ? `https:${url}` : url;
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * Reads dates written like "Nov. 5, 2026, 3:38 a.m.", "July 15, 2026, 5:31 p.m." or "Nov 5, 2026" (as UTC).
+ * Returns null when the text is not that form. (Date.parse cannot be trusted for these on every JS engine.)
+ */
+export function parseSiteDate(raw: string): string | null {
+  const m = raw.match(/([A-Za-z]{3,9})\.?\s+(\d{1,2}),\s+(\d{4})(?:,\s+(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?)?/i);
+  if (!m) return null;
+  const month = MONTHS.indexOf(m[1].slice(0, 3).toLowerCase());
+  if (month < 0) return null;
+  let hour = m[4] ? Number(m[4]) % 12 : 0;
+  if (m[6] && m[6].toLowerCase() === 'p') hour += 12;
+  return new Date(Date.UTC(Number(m[3]), month, Number(m[2]), hour, Number(m[5] ?? 0))).toISOString();
+}
+
 /** "5 mins ago" / "2 days ago" / "March 3, 2024" -> ISO string (falls back to now). */
 export function parseReleaseDate(raw: string): string {
   const s = raw.trim().toLowerCase();

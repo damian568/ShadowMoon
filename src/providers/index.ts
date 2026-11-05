@@ -12,7 +12,9 @@
 import { mangadexProvider } from './mangadex';
 import { mangareadProvider } from './mangaread';
 import { asuraProvider } from './asura';
-import { arenascanProvider, kingofshojoProvider, thunderscansProvider } from './themesia';
+import { rinkoProvider } from './rinko';
+import { mgekoProvider } from './mgeko';
+import { arenascanProvider, kingofshojoProvider, rokariProvider, thunderscansProvider } from './themesia';
 import { vortexProvider } from './vortex';
 import type { Chapter, Manga, MangaStats, MangaType, Page, Provider, SearchOptions } from './types';
 
@@ -20,7 +22,7 @@ export * from './types';
 
 export const DEFAULT_PROVIDER_ID = mangadexProvider.id;
 
-const providers: Provider[] = [mangadexProvider, mangareadProvider, kingofshojoProvider, arenascanProvider, vortexProvider, asuraProvider, thunderscansProvider];
+const providers: Provider[] = [mangadexProvider, mangareadProvider, kingofshojoProvider, arenascanProvider, vortexProvider, asuraProvider, thunderscansProvider, mgekoProvider, rokariProvider, rinkoProvider];
 
 /** Add a new source. Call once at startup (see README, "Adding a provider"). */
 export function registerProvider(p: Provider) {

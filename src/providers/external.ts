@@ -21,4 +21,13 @@ export const externalSites: readonly ExternalSite[] = [
     homeUrl: 'https://mangafire.to/',
     searchUrl: (q) => `https://mangafire.to/filter?keyword=${encodeURIComponent(q)}`,
   },
+  {
+    id: 'comix',
+    name: 'Comix',
+    iconUrl: 'https://comix.to/assets/uploads/35595e3de3c99889c1bd2c56f3e3714fc0c457.png',
+    homeUrl: 'https://comix.to/',
+    // /browse is the site's browse page; the keyword option is the usual one but could not be confirmed from outside
+    // the app, because the results are drawn by the site's own script.
+    searchUrl: (q) => `https://comix.to/browse?keyword=${encodeURIComponent(q)}`,
+  },
 ];

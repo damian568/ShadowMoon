@@ -26,10 +26,13 @@ jest.mock('../providers/mangadex', () => ({ mangadexProvider: require('./helpers
 jest.mock('../providers/mangaread', () => ({ mangareadProvider: require('./helpers').fakeProvider('mangaread') }));
 jest.mock('../providers/vortex', () => ({ vortexProvider: require('./helpers').fakeProvider('vortex') }));
 jest.mock('../providers/asura', () => ({ asuraProvider: require('./helpers').fakeProvider('asura') }));
+jest.mock('../providers/mgeko', () => ({ mgekoProvider: require('./helpers').fakeProvider('mgeko') }));
+jest.mock('../providers/rinko', () => ({ rinkoProvider: require('./helpers').fakeProvider('rinko') }));
 jest.mock('../providers/themesia', () => ({
   kingofshojoProvider: require('./helpers').fakeProvider('kingofshojo'),
   arenascanProvider: require('./helpers').fakeProvider('arenascan'),
   thunderscansProvider: require('./helpers').fakeProvider('thunderscans'),
+  rokariProvider: require('./helpers').fakeProvider('rokari'),
 }));
 /* eslint-enable @typescript-eslint/no-require-imports */
 

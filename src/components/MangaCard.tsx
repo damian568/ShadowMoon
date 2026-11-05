@@ -4,7 +4,9 @@ import { router } from 'expo-router';
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { splitId } from '../providers';
 import type { MangaType } from '../providers/types';
+import { showTitleActions } from '../utils/titleActions';
 import { progressOf, useEntry } from '../store/library';
 import { colors, radius, statusColors, typeColors } from '../theme';
 import { ProgressBar } from './ui';
@@ -16,17 +18,18 @@ export interface CardManga {
   type: MangaType;
 }
 
-function MangaCardBase({ manga, width, subtitle, source }: { manga: CardManga; width: number; subtitle?: string; source?: string }) {
+function MangaCardBase({ manga, width, subtitle }: { manga: CardManga; width: number; subtitle?: string }) {
   const entry = useEntry(manga.id);
   const { percent, read, total } = progressOf(entry);
   const height = width * 1.5;
-  // `source` (which site the title comes from) is shown in front of the progress, e.g. "MangaRead · 42% · 63/150".
-  const sub =
-    subtitle ?? ([source, read > 0 && total > 0 ? `${percent}% · ${read}/${total}` : null].filter(Boolean).join(' · ') || undefined);
+  // Which site the title comes from, taken from its id; always shown under the title.
+  const source = splitId(manga.id).provider.name;
+  const sub = subtitle ?? (read > 0 && total > 0 ? `${percent}% · ${read}/${total}` : undefined);
 
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/manga/[id]', params: { id: manga.id } })}
+      onLongPress={() => showTitleActions(manga.title)}
       style={({ pressed }) => [{ width, opacity: pressed ? 0.8 : 1 }]}
     >
       <View style={[styles.cover, { width, height }]}>
@@ -60,6 +63,7 @@ function MangaCardBase({ manga, width, subtitle, source }: { manga: CardManga; w
       <Text style={styles.title} numberOfLines={2}>
         {manga.title}
       </Text>
+      <Text style={styles.source} numberOfLines={1}>{source}</Text>
       {sub ? (
         <Text style={styles.subtitle} numberOfLines={1}>{sub}</Text>
       ) : null}
@@ -104,5 +108,6 @@ const styles = StyleSheet.create({
   newText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   progressWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(10,10,20,0.6)' },
   title: { color: '#EEEBFF', fontSize: 13, fontWeight: '600', marginTop: 6, lineHeight: 17 },
+  source: { color: colors.accent, fontSize: 11, fontWeight: '700', marginTop: 2 },
   subtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
 });

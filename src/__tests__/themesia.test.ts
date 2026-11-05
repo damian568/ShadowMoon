@@ -268,3 +268,68 @@ describe('getChapterPages', () => {
 it('uses all four content ratings by default in tests', () => {
   expect(ALL_RATINGS).toHaveLength(4);
 });
+
+// --- a site that does not allow its own search page to be used (e.g. Rokari Comics) ----------------
+
+describe('search without the site search (local index)', () => {
+  const makeSite = () => createThemesiaProvider({ id: 'local', name: 'Local Site', description: 'd', base: BASE, siteSearch: false });
+
+  const twoPages = () =>
+    mockFetch([
+      ['/manga/?page=1', listing(card('a-love-story', 'A Love Story') + card('duke-bride', "The Duke's Bride"), true)],
+      ['/manga/?page=2', listing(card('love-and-war', 'Love and War') + card('a-love-story', 'A Love Story'), false)],
+    ]);
+
+  it('builds the list from the browse pages, then filters it by every word in the title', async () => {
+    const f = twoPages();
+    const site = makeSite();
+    expect((await site.search(searchOpts({ title: 'LOVE' }))).items.map((m) => m.id)).toEqual(['a-love-story', 'love-and-war']);
+    expect((await site.search(searchOpts({ title: 'love war' }))).items.map((m) => m.id)).toEqual(['love-and-war']);
+    expect((await site.search(searchOpts({ title: 'nothing like this' }))).items).toEqual([]);
+    expect(f.mock.calls.map((c) => c[0])).toEqual([`${BASE}/manga/?page=1&order=popular`, `${BASE}/manga/?page=2&order=popular`]);
+  });
+
+  it('never uses the forbidden ?s= search page', async () => {
+    const f = twoPages();
+    await makeSite().search(searchOpts({ title: 'love' }));
+    for (const [url] of f.mock.calls) expect(url).not.toContain('?s=');
+  });
+
+  it('reads the list only once for several searches, even at the same time', async () => {
+    const f = twoPages();
+    const site = makeSite();
+    await Promise.all([site.search(searchOpts({ title: 'a' })), site.search(searchOpts({ title: 'b' })), site.search(searchOpts({ title: 'duke' }))]);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it('pages the matches and reports their number as the total', async () => {
+    twoPages();
+    const site = makeSite();
+    const first = await site.search(searchOpts({ title: 'love' }));
+    expect(first.total).toBe(2);
+    expect((await site.search(searchOpts({ title: 'love', offset: 20 }))).items).toEqual([]);
+  });
+
+  it('keeps the browse pages working as before (no search text)', async () => {
+    const f = twoPages();
+    const page = await makeSite().search(searchOpts({ order: 'followedCount' }));
+    expect(f.mock.calls[0][0]).toContain('/manga/?page=1&order=popular');
+    expect(page.items).toHaveLength(2);
+  });
+
+  it('surfaces an error when the first page cannot be loaded, and keeps what it has if a later page fails', async () => {
+    mockFetch([['/manga/', { status: 403 }]]);
+    await expect(makeSite().search(searchOpts({ title: 'x' }))).rejects.toThrow(/blocked the request/);
+    mockFetch([
+      ['/manga/?page=1', listing(card('a-love-story', 'A Love Story'), true)],
+      ['/manga/?page=2', { status: 500 }],
+    ]);
+    expect((await makeSite().search(searchOpts({ title: 'love' }))).items.map((m) => m.id)).toEqual(['a-love-story']);
+  });
+
+  it('a site with its own search still uses it', async () => {
+    const f = mockFetch([['?s=', listing(card('x', 'X'))]]);
+    await site.search(searchOpts({ title: 'love' }));
+    expect(f.mock.calls[0][0]).toBe(`${BASE}/?s=love`);
+  });
+});
