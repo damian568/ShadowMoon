@@ -13,7 +13,7 @@ import { AppState } from 'react-native';
 import { useAuth } from '../store/auth';
 import { useLibrary, useStableCallback } from '../store/library';
 import { entriesToUpload, hashSynced } from './merge';
-import { fetchRemoteLibrary, uploadEntries } from './remote';
+import { fetchRemoteAppearance, fetchRemoteLibrary, uploadAppearance, uploadEntries } from './remote';
 
 export type SyncStatus = 'off' | 'syncing' | 'synced' | 'error';
 
@@ -42,7 +42,7 @@ const messageOf = (e: unknown) => (e instanceof Error && e.message ? e.message :
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
-  const { state, adoptAccount, mergeRemote } = useLibrary();
+  const { state, adoptAccount, mergeRemote, mergeAppearance } = useLibrary();
   const uid = auth.status === 'signedIn' ? (auth.user?.uid ?? null) : null;
   const hydrated = state.hydrated;
 
@@ -58,11 +58,14 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const downloading = useRef(false);
   const uploading = useRef(false);
   const lastPullAt = useRef(0);
+  /** The change time of the Dark/Light choice the cloud holds. */
+  const knownAppearanceAt = useRef(0);
 
   // A different account means a different cloud library.
   useEffect(() => {
     known.current.clear();
     lastPullAt.current = 0;
+    knownAppearanceAt.current = 0;
   }, [uid]);
 
   const syncNow = useStableCallback(async () => {
@@ -75,6 +78,14 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       const remote = await fetchRemoteLibrary(uid);
       for (const entry of Object.values(remote)) known.current.set(entry.id, hashSynced(entry));
       mergeRemote(remote);
+      try {
+        // The Dark/Light choice is saved with the account. A failure here must not fail the library sync.
+        const saved = await fetchRemoteAppearance(uid);
+        if (saved) {
+          knownAppearanceAt.current = saved.at;
+          mergeAppearance(saved.appearance, saved.at);
+        }
+      } catch {}
       lastPullAt.current = Date.now();
       setReadyUid(uid);
       setStatus('synced');
@@ -92,8 +103,20 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     if (readyUid !== uid) return false; // the account's library was never downloaded: we cannot be sure
     // Let an upload that is already running finish first (at most ~10 s).
     for (let i = 0; i < 100 && uploading.current; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    let ok = true;
+    const appearanceAt = state.settings.appearanceAt ?? 0;
+    if (appearanceAt > knownAppearanceAt.current) {
+      try {
+        await uploadAppearance(uid, state.settings.appearance, appearanceAt);
+        knownAppearanceAt.current = appearanceAt;
+      } catch (e) {
+        setStatus('error');
+        setError(messageOf(e));
+        ok = false;
+      }
+    }
     const pending = entriesToUpload(state.entries, known.current);
-    if (pending.length === 0) return true;
+    if (pending.length === 0) return ok;
     uploading.current = true;
     setStatus('syncing');
     try {
@@ -102,7 +125,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       setStatus('synced');
       setLastSyncedAt(Date.now());
       setError(null);
-      return true;
+      return ok;
     } catch (e) {
       setStatus('error');
       setError(messageOf(e));
@@ -153,6 +176,24 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }, UPLOAD_DELAY_MS);
     return () => clearTimeout(timer);
   }, [state.entries, uid, readyUid, hydrated, tick]);
+
+  // Upload a changed Dark/Light choice.
+  useEffect(() => {
+    if (!uid || readyUid !== uid || !hydrated) return;
+    const at = state.settings.appearanceAt ?? 0;
+    if (at <= knownAppearanceAt.current) return;
+    const appearance = state.settings.appearance;
+    const timer = setTimeout(async () => {
+      try {
+        await uploadAppearance(uid, appearance, at);
+        knownAppearanceAt.current = Math.max(knownAppearanceAt.current, at);
+      } catch (e) {
+        setStatus('error');
+        setError(messageOf(e));
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [state.settings.appearance, state.settings.appearanceAt, uid, readyUid, hydrated]);
 
   const api = useMemo<SyncApi>(
     () => ({

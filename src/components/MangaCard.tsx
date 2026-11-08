@@ -8,7 +8,8 @@ import { splitId } from '../providers';
 import type { MangaType } from '../providers/types';
 import { showTitleActions } from '../utils/titleActions';
 import { progressOf, useEntry } from '../store/library';
-import { colors, radius, statusColors, typeColors } from '../theme';
+import { useScheme } from '../store/appearance';
+import { colors, radius, statusColors, typeColors, themedStyles } from '../theme';
 import { ProgressBar } from './ui';
 
 export interface CardManga {
@@ -19,6 +20,7 @@ export interface CardManga {
 }
 
 function MangaCardBase({ manga, width, subtitle }: { manga: CardManga; width: number; subtitle?: string }) {
+  useScheme();
   const entry = useEntry(manga.id);
   const { percent, read, total } = progressOf(entry);
   const height = width * 1.5;
@@ -73,7 +75,7 @@ function MangaCardBase({ manga, width, subtitle }: { manga: CardManga; width: nu
 
 export const MangaCard = memo(MangaCardBase);
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   cover: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -110,4 +112,4 @@ const styles = StyleSheet.create({
   title: { color: '#EEEBFF', fontSize: 13, fontWeight: '600', marginTop: 6, lineHeight: 17 },
   source: { color: colors.accent, fontSize: 11, fontWeight: '700', marginTop: 2 },
   subtitle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-});
+}));

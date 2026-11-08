@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../store/auth';
-import { colors, radius, spacing } from '../theme';
+import { useScheme } from '../store/appearance';
+import { colors, radius, spacing, themedStyles } from '../theme';
 import { validateEmail, validateLogin, validateRegister, type FieldErrors } from '../utils/auth';
 import { Button } from './ui';
 
@@ -29,6 +30,7 @@ function close() {
 }
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
+  useScheme();
   const auth = useAuth();
   const isRegister = mode === 'register';
 
@@ -211,6 +213,7 @@ export function Field({ label, error, inputProps, inputRef, right }: {
   inputRef?: React.Ref<InputHandle>;
   right?: React.ReactNode;
 }) {
+  useScheme();
   return (
     <View style={{ marginTop: spacing.lg }}>
       <Text style={styles.label}>{label}</Text>
@@ -223,7 +226,7 @@ export function Field({ label, error, inputProps, inputRef, right }: {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   content: { padding: spacing.lg, paddingTop: spacing.xl, paddingBottom: 48 },
   logo: {
     width: 64,
@@ -271,4 +274,4 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.xl },
   switchText: { color: colors.textMuted, fontSize: 14 },
   skip: { color: colors.textMuted, fontSize: 13 },
-});
+}));

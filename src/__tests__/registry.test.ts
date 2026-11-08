@@ -3,12 +3,15 @@
  * so these tests exercise only the registry's own logic: ids, multi-source search and type look-ups.
  */
 import {
+  DEFAULT_NOVEL_PROVIDER_ID,
   DEFAULT_PROVIDER_ID,
+  getChapterText,
   getChaptersCached,
   getManga,
   getMangaByIds,
   getMangaCached,
   getProvider,
+  kindOfId,
   listProviders,
   makeId,
   registerProvider,
@@ -32,6 +35,12 @@ jest.mock('../providers/mgeko', () => ({ mgekoProvider: require('./helpers').fak
 jest.mock('../providers/manga18club', () => ({ manga18clubProvider: require('./helpers').fakeProvider('manga18club', { adult: true }) }));
 jest.mock('../providers/manhwa18', () => ({ manhwa18Provider: require('./helpers').fakeProvider('manhwa18', { adult: true }) }));
 jest.mock('../providers/rinko', () => ({ rinkoProvider: require('./helpers').fakeProvider('rinko') }));
+jest.mock('../providers/rinkonovels', () => ({ rinkoNovelsProvider: require('./helpers').fakeProvider('rinkonovels', { kind: 'novel' }) }));
+jest.mock('../providers/novelbin', () => ({ novelbinProvider: require('./helpers').fakeProvider('novelbin', { kind: 'novel' }) }));
+jest.mock('../providers/readnovelfull', () => ({ readnovelfullProvider: require('./helpers').fakeProvider('readnovelfull', { kind: 'novel' }) }));
+jest.mock('../providers/freewebnovel', () => ({ freewebnovelProvider: require('./helpers').fakeProvider('freewebnovel', { kind: 'novel' }) }));
+jest.mock('../providers/manhuaplus', () => ({ manhuaplusProvider: require('./helpers').fakeProvider('manhuaplus') }));
+jest.mock('../providers/tcbscans', () => ({ tcbscansProvider: require('./helpers').fakeProvider('tcbscans') }));
 jest.mock('../providers/themesia', () => ({
   kingofshojoProvider: require('./helpers').fakeProvider('kingofshojo'),
   arenascanProvider: require('./helpers').fakeProvider('arenascan'),
@@ -336,5 +345,57 @@ describe('type filter on sources that do not show a title\'s type', () => {
     getMangaMock('mangaread').mockResolvedValue(m('y3', { type: 'manhwa' }));
     const res = await searchAll(searchOpts({ title: 'x', type: 'manhwa' }));
     expect(ids(res.items).sort()).toEqual(['mangaread:y3', 'y2']);
+  });
+});
+
+// --- manga and light novels are separate libraries with separate sources -----------------
+
+describe('content kinds (manga vs light novels)', () => {
+  it('lists only the sources of the chosen kind', () => {
+    const manga = visibleProviders(true, 'manga').map((p) => p.id);
+    const novel = visibleProviders(true, 'novel').map((p) => p.id);
+    expect(novel).toEqual(['rinkonovels', 'novelbin', 'readnovelfull', 'freewebnovel']);
+    expect(manga).toContain('mangadex');
+    for (const id of novel) expect(manga).not.toContain(id);
+    expect(visibleProviders(false).map((p) => p.id)).not.toContain('novelbin'); // manga is the default kind
+  });
+
+  it('falls back to the default source of the same kind', () => {
+    expect(usableProviderId('novelbin', false, 'novel')).toBe('novelbin');
+    expect(usableProviderId('mangadex', false, 'novel')).toBe(DEFAULT_NOVEL_PROVIDER_ID); // a manga source is not a novel source
+    expect(usableProviderId('novelbin', false, 'manga')).toBe(DEFAULT_PROVIDER_ID);
+    expect(usableProviderId(undefined, false, 'novel')).toBe(DEFAULT_NOVEL_PROVIDER_ID);
+  });
+
+  it('tells which library a title belongs to from its id', () => {
+    expect(kindOfId('some-bare-mangadex-id')).toBe('manga');
+    expect(kindOfId('mangaread:one-piece')).toBe('manga');
+    expect(kindOfId('novelbin:some-novel')).toBe('novel');
+    expect(kindOfId('rinkonovels:can-i-cry-now')).toBe('novel');
+    expect(kindOfId('gone-source:x')).toBe('manga'); // unknown sources count as manga
+  });
+
+  it('a search across all sources only asks the sources of the chosen kind', async () => {
+    search('novelbin').mockResolvedValue(pageOf([m('n1', { type: 'novel' })], 1));
+    const novels = await searchAll({ ...searchOpts({ title: 'x' }), kind: 'novel' });
+    expect(ids(novels.items)).toEqual(['novelbin:n1']);
+    expect(search('mangadex')).not.toHaveBeenCalled();
+    expect(search('mangaread')).not.toHaveBeenCalled();
+
+    search('novelbin').mockClear();
+    await searchAll(searchOpts({ title: 'x' })); // manga is the default
+    expect(search('novelbin')).not.toHaveBeenCalled();
+    expect(search('mangadex')).toHaveBeenCalled();
+  });
+
+  it('reads chapter text from the source the title belongs to', async () => {
+    const fn = jest.fn(async () => ['One.', 'Two.']);
+    (provider('novelbin') as Provider).getChapterText = fn;
+    expect(await getChapterText('novelbin:n1', 'ch-5')).toEqual(['One.', 'Two.']);
+    expect(fn).toHaveBeenCalledWith('ch-5');
+  });
+
+  it('refuses to read text from a source that has none', async () => {
+    await expect(getChapterText('mangaread:x', 'c1')).rejects.toThrow(/no text chapters/);
   });
 });

@@ -5,13 +5,15 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions,
 
 import { MangaCard } from '../../components/MangaCard';
 import { Button, Chip, EmptyState } from '../../components/ui';
-import { isInLibrary, progressOf, useLibrary, type LibraryEntry, type ReadingStatus } from '../../store/library';
-import { colors, radius, spacing, statusColors } from '../../theme';
+import { progressOf, useKindLibrary, type LibraryEntry, type ReadingStatus } from '../../store/library';
+import { useScheme } from '../../store/appearance';
+import { colors, radius, spacing, statusColors, themedStyles } from '../../theme';
 
 type Filter = 'all' | 'favorite' | ReadingStatus;
 type Sort = 'recent' | 'title' | 'progress' | 'added';
 
-const FILTERS: { key: Filter; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; color: string }[] = [
+// A function, so the colours are read from the live palette each time (they change with Dark/Light).
+const filters = (): { key: Filter; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; color: string }[] => [
   { key: 'all', label: 'All', icon: 'albums', color: colors.accent },
   { key: 'favorite', label: 'Favourites', icon: 'heart', color: colors.favorite },
   { key: 'reading', label: 'Reading', icon: 'book', color: statusColors.reading },
@@ -29,13 +31,12 @@ const SORTS: { key: Sort; label: string }[] = [
 const COLUMNS = 3;
 
 export default function LibraryScreen() {
-  const { state } = useLibrary();
+  useScheme();
+  const all = useKindLibrary();
   const { width } = useWindowDimensions();
   const cardWidth = Math.floor((width - spacing.lg * 2 - spacing.md * (COLUMNS - 1)) / COLUMNS);
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('recent');
-
-  const all = useMemo(() => Object.values(state.entries).filter(isInLibrary), [state.entries]);
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = { all: all.length, favorite: 0, reading: 0, completed: 0, later: 0 };
@@ -84,7 +85,7 @@ export default function LibraryScreen() {
 
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {FILTERS.map((f) => (
+          {filters().map((f) => (
             <Chip
               key={f.key}
               label={f.label}
@@ -139,6 +140,7 @@ function subtitleFor(e: LibraryEntry): string {
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
+  useScheme();
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
       <Text style={styles.statValue}>{value}</Text>
@@ -147,7 +149,7 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   statsCard: {
     flexDirection: 'row',
     marginHorizontal: spacing.lg,
@@ -171,4 +173,4 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   sortText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-});
+}));

@@ -8,19 +8,35 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 're
 import { router } from 'expo-router';
 
 import { Chip, SourceIcon } from '../../components/ui';
-import { getProvider, usableProviderId, visibleProviders } from '../../providers';
+import { getProvider, visibleProviders, type ContentKind } from '../../providers';
 import { useAuth } from '../../store/auth';
-import { useLibrary, type ReaderMode } from '../../store/library';
+import { activeProviderId, NOVEL_FONT_SIZES, useLibrary, type ReaderMode } from '../../store/library';
 import { useSync, type SyncApi } from '../../sync/SyncProvider';
 import { useSignOut } from '../../sync/useSignOut';
 import { nicknameFor } from '../../utils/auth';
 import { timeAgo } from '../../utils/time';
-import { colors, radius, spacing } from '../../theme';
+import { useScheme } from '../../store/appearance';
+import { colors, radius, spacing, themedStyles } from '../../theme';
 
 const READER_MODES: { key: ReaderMode; label: string; hint: string }[] = [
   { key: 'auto', label: 'Auto', hint: 'Vertical scroll for manhwa/manhua, page-by-page (right-to-left) for manga.' },
   { key: 'vertical', label: 'Vertical scroll', hint: 'Always scroll pages top to bottom (webtoon style).' },
   { key: 'paged', label: 'Paged', hint: 'Always swipe page by page, right-to-left. Pinch to zoom.' },
+];
+
+const CONTENT_KINDS: { key: ContentKind; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; hint: string }[] = [
+  {
+    key: 'manga',
+    label: 'Manga & Manhwa',
+    icon: 'images-outline',
+    hint: 'Comics made of pictures: manga, manhwa and manhua.',
+  },
+  {
+    key: 'novel',
+    label: 'Light Novels',
+    icon: 'book-outline',
+    hint: 'Text only, no pictures, in a reader made for long reading.',
+  },
 ];
 
 const UPDATE_INTERVALS = [
@@ -32,11 +48,15 @@ const UPDATE_INTERVALS = [
 ];
 
 export default function SettingsScreen() {
+  useScheme();
   const { state, updateSettings, resetLibrary } = useLibrary();
   const auth = useAuth();
   const sync = useSync();
   const signOut = useSignOut();
   const s = state.settings;
+  const novel = s.contentKind === 'novel';
+  const sources = visibleProviders(s.showMature, s.contentKind);
+  const activeProvider = getProvider(activeProviderId(s));
 
   // Turning 18+ titles on asks for confirmation first; turning them off needs none.
   const toggleMature = (on: boolean) => {
@@ -91,43 +111,101 @@ export default function SettingsScreen() {
         )}
       </Group>
 
-      <Group title="Reading">
-        <Text style={styles.label}>Reader mode</Text>
+      <Group title="I read">
         <View style={styles.chipWrap}>
-          {READER_MODES.map((m) => (
-            <Chip key={m.key} label={m.label} active={s.readerMode === m.key} onPress={() => updateSettings({ readerMode: m.key })} />
+          {CONTENT_KINDS.map((k) => (
+            <Chip key={k.key} label={k.label} icon={k.icon} active={s.contentKind === k.key} onPress={() => updateSettings({ contentKind: k.key })} />
           ))}
         </View>
-        <Text style={styles.hint}>{READER_MODES.find((m) => m.key === s.readerMode)?.hint}</Text>
-
-        <Row
-          icon="cellular-outline"
-          title="Data saver"
-          subtitle="Load compressed images — faster on mobile data."
-          right={<Switch value={s.dataSaver} onValueChange={(v) => updateSettings({ dataSaver: v })} trackColor={{ true: colors.accentStrong }} />}
-        />
+        <Text style={styles.hint}>
+          {CONTENT_KINDS.find((k) => k.key === s.contentKind)?.hint} Manga and light novels each have their own library, sources and updates. Switching never deletes anything.
+        </Text>
       </Group>
 
-      {visibleProviders(s.showMature).length > 1 && (
+      {novel && (
+        <Group title="Appearance">
+          {auth.status === 'signedIn' ? (
+            <>
+              <View style={styles.chipWrap}>
+                <Chip label="Dark" icon="moon-outline" active={s.appearance === 'dark'} onPress={() => updateSettings({ appearance: 'dark' })} />
+                <Chip label="Light" icon="sunny-outline" active={s.appearance === 'light'} onPress={() => updateSettings({ appearance: 'light' })} />
+              </View>
+              <Text style={styles.hint}>Dark or light colours while you read Light Novels. Saved with your account. Manga &amp; Manhwa is always dark.</Text>
+            </>
+          ) : (
+            <Row
+              icon="log-in-outline"
+              title="Sign in to use Light mode"
+              subtitle="ShadowMoon is dark by default. Once you sign in, you can choose Light for Light Novels, and the choice is saved to your account."
+              onPress={() => router.push('/auth/login')}
+            />
+          )}
+        </Group>
+      )}
+
+      {novel ? (
+        <Group title="Reading">
+          <Text style={styles.label}>Text size</Text>
+          <View style={styles.sizeRow}>
+            <Pressable
+              onPress={() => updateSettings({ novelFontSize: Math.max(NOVEL_FONT_SIZES.min, s.novelFontSize - 2) })}
+              disabled={s.novelFontSize <= NOVEL_FONT_SIZES.min}
+              style={[styles.sizeBtn, s.novelFontSize <= NOVEL_FONT_SIZES.min && { opacity: 0.35 }]}
+              hitSlop={8}
+            >
+              <Ionicons name="remove" size={20} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.sizeSample, { fontSize: s.novelFontSize }]}>Aa · {s.novelFontSize}</Text>
+            <Pressable
+              onPress={() => updateSettings({ novelFontSize: Math.min(NOVEL_FONT_SIZES.max, s.novelFontSize + 2) })}
+              disabled={s.novelFontSize >= NOVEL_FONT_SIZES.max}
+              style={[styles.sizeBtn, s.novelFontSize >= NOVEL_FONT_SIZES.max && { opacity: 0.35 }]}
+              hitSlop={8}
+            >
+              <Ionicons name="add" size={20} color={colors.text} />
+            </Pressable>
+          </View>
+          <Text style={styles.hint}>You can also change the size while reading.</Text>
+        </Group>
+      ) : (
+        <Group title="Reading">
+          <Text style={styles.label}>Reader mode</Text>
+          <View style={styles.chipWrap}>
+            {READER_MODES.map((m) => (
+              <Chip key={m.key} label={m.label} active={s.readerMode === m.key} onPress={() => updateSettings({ readerMode: m.key })} />
+            ))}
+          </View>
+          <Text style={styles.hint}>{READER_MODES.find((m) => m.key === s.readerMode)?.hint}</Text>
+
+          <Row
+            icon="cellular-outline"
+            title="Data saver"
+            subtitle="Load compressed images — faster on mobile data."
+            right={<Switch value={s.dataSaver} onValueChange={(v) => updateSettings({ dataSaver: v })} trackColor={{ true: colors.accentStrong }} />}
+          />
+        </Group>
+      )}
+
+      {sources.length > 1 && (
         <Group title="Source">
           <View style={styles.chipWrap}>
-            {visibleProviders(s.showMature).map((p) => (
+            {sources.map((p) => (
               <Chip
                 key={p.id}
                 label={p.name}
                 leading={<SourceIcon name={p.name} iconUrl={p.iconUrl} />}
-                active={usableProviderId(s.provider, s.showMature) === p.id}
-                onPress={() => updateSettings({ provider: p.id })}
+                active={activeProvider.id === p.id}
+                onPress={() => updateSettings(novel ? { novelProvider: p.id } : { provider: p.id })}
               />
             ))}
           </View>
-          <Text style={styles.hint}>{getProvider(usableProviderId(s.provider, s.showMature)).description} Your library keeps titles from every source.</Text>
+          <Text style={styles.hint}>{activeProvider.description} Your library keeps titles from every source.</Text>
         </Group>
       )}
 
       <Group title="Chapter language">
         <View style={styles.chipWrap}>
-          {getProvider(usableProviderId(s.provider, s.showMature)).languages.map((l) => (
+          {activeProvider.languages.map((l) => (
             <Chip key={l.code} label={l.label} active={s.language === l.code} onPress={() => updateSettings({ language: l.code })} />
           ))}
         </View>
@@ -164,12 +242,14 @@ export default function SettingsScreen() {
       </Group>
 
       <Group title="About">
-        <Row
-          icon="globe-outline"
-          title="Content source: MangaDex"
-          subtitle="Free, community-run and ad-free. Consider supporting the scanlation groups."
-          onPress={() => WebBrowser.openBrowserAsync('https://mangadex.org')}
-        />
+        {!novel && (
+          <Row
+            icon="globe-outline"
+            title="Content source: MangaDex"
+            subtitle="Free, community-run and ad-free. Consider supporting the scanlation groups."
+            onPress={() => WebBrowser.openBrowserAsync('https://mangadex.org')}
+          />
+        )}
         <Row icon="moon-outline" title="ShadowMoon" subtitle={`Version ${Constants.expoConfig?.version ?? '1.0.0'} · no ads, no tracking`} />
       </Group>
     </ScrollView>
@@ -183,6 +263,7 @@ function syncSubtitle(sync: SyncApi): string {
 }
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  useScheme();
   return (
     <View style={{ marginBottom: spacing.xl }}>
       <Text style={styles.groupTitle}>{title}</Text>
@@ -199,6 +280,7 @@ function Row({ icon, title, subtitle, right, onPress, danger }: {
   onPress?: () => void;
   danger?: boolean;
 }) {
+  useScheme();
   return (
     <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
       <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.accent} />
@@ -211,7 +293,7 @@ function Row({ icon, title, subtitle, right, onPress, danger }: {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   groupTitle: {
     color: colors.textMuted,
     fontSize: 13,
@@ -231,7 +313,17 @@ const styles = StyleSheet.create({
   label: { color: colors.text, fontSize: 15, fontWeight: '600', marginBottom: spacing.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.sm },
   hint: { color: colors.textMuted, fontSize: 12, marginTop: spacing.sm, lineHeight: 17 },
+  sizeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  sizeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+  },
+  sizeSample: { flex: 1, color: colors.text, textAlign: 'center', fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
   rowTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
   rowSub: { color: colors.textMuted, fontSize: 12, marginTop: 2, lineHeight: 16 },
-});
+}));

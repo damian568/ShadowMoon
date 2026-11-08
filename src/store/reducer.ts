@@ -1,4 +1,5 @@
-import type { Chapter, Manga } from '../providers/types';
+import type { Chapter, ContentKind, Manga } from '../providers/types';
+import type { Scheme } from '../theme';
 import { mergeLibrary, readLogOf, type SyncedEntry } from '../sync/merge';
 
 // ---------------------------------------------------------------------------
@@ -40,8 +41,18 @@ export interface LibraryEntry extends MangaLite {
 }
 
 export interface Settings {
-  /** Which content source Discover and Search use (see src/providers). */
+  /** What the app is for right now: manga/manhwa (images) or light novels (text). Each has its own library and sources. */
+  contentKind: ContentKind;
+  /** Which manga source Discover and Search use (see src/providers). */
   provider: string;
+  /** Which novel source Discover and Search use while reading light novels. */
+  novelProvider: string;
+  /** Text size of the novel reader. */
+  novelFontSize: number;
+  /** Dark or light colours. Saved with the account; only used while signed in and reading light novels (see schemeFor). */
+  appearance: Scheme;
+  /** When `appearance` was last changed (decides which copy wins when it is synced with the account). */
+  appearanceAt?: number;
   language: string;
   dataSaver: boolean;
   readerMode: ReaderMode;
@@ -58,8 +69,21 @@ export interface State {
   syncedUid?: string | null;
 }
 
+/**
+ * The colours in use. Always dark, except while someone is signed in and reading Light Novels: then they follow the
+ * Appearance setting, which is saved with the account.
+ */
+export const schemeFor = (s: Pick<Settings, 'contentKind' | 'appearance'>, signedIn: boolean): Scheme =>
+  signedIn && s.contentKind === 'novel' ? s.appearance : 'dark';
+
+export const NOVEL_FONT_SIZES = { min: 14, max: 30, default: 18 } as const;
+
 export const DEFAULT_SETTINGS: Settings = {
+  contentKind: 'manga',
   provider: 'mangadex',
+  novelProvider: 'rinkonovels',
+  novelFontSize: NOVEL_FONT_SIZES.default,
+  appearance: 'dark',
   language: 'en',
   dataSaver: false,
   readerMode: 'auto',
@@ -94,6 +118,7 @@ export type Action =
   | { type: 'settings'; patch: Partial<Settings> }
   | { type: 'adoptAccount'; uid: string }
   | { type: 'mergeRemote'; remote: Record<string, SyncedEntry> }
+  | { type: 'mergeAppearance'; appearance: Scheme; at: number }
   | { type: 'resetAll' }
   | { type: 'reset' };
 
@@ -257,6 +282,9 @@ export function reducer(state: State, action: Action): State {
 
     case 'settings': {
       const settings = { ...state.settings, ...action.patch };
+      if (action.patch.appearance && action.patch.appearance !== state.settings.appearance) settings.appearanceAt = Date.now();
+      // Switching between manga and novels: the other library has not been checked for a while, so check it on arrival.
+      if (settings.contentKind !== state.settings.contentKind) return { ...state, settings, lastUpdateCheck: null };
       if (settings.language === state.settings.language) return { ...state, settings };
       // Chapter counts differ per language: force a clean re-sync without "new chapter" noise.
       const entries: Record<string, LibraryEntry> = {};
@@ -271,8 +299,15 @@ export function reducer(state: State, action: Action): State {
       // The phone holds another account's library: don't mix it into this account. (A phone that was never
       // synced, e.g. one used before signing in, keeps its library and merges it into the account instead.)
       const otherAccount = !!state.syncedUid;
-      return { ...state, entries: otherAccount ? {} : state.entries, syncedUid: action.uid };
+      // The Dark/Light choice belongs to the account too.
+      const settings = otherAccount ? { ...state.settings, appearance: DEFAULT_SETTINGS.appearance, appearanceAt: undefined } : state.settings;
+      return { ...state, entries: otherAccount ? {} : state.entries, settings, syncedUid: action.uid };
     }
+
+    // The account's saved Dark/Light choice arrives from the cloud: the more recent change wins.
+    case 'mergeAppearance':
+      if (action.at <= (state.settings.appearanceAt ?? 0)) return state;
+      return { ...state, settings: { ...state.settings, appearance: action.appearance, appearanceAt: action.at } };
 
     case 'mergeRemote':
       return { ...state, entries: mergeLibrary(state.entries, action.remote) };

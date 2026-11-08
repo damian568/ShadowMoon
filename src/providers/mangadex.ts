@@ -130,7 +130,7 @@ const TYPE_BY_LANG: Record<string, MangaType> = {
   'zh-hk': 'manhua',
 };
 
-export const LANGS_BY_TYPE: Record<Exclude<MangaType, 'other'>, string[]> = {
+export const LANGS_BY_TYPE: Record<'manga' | 'manhwa' | 'manhua', string[]> = {
   manga: ['ja'],
   manhwa: ['ko'],
   manhua: ['zh', 'zh-hk'],
@@ -230,7 +230,7 @@ async function search(opts: SearchOptions): Promise<Page<Manga>> {
     contentRating: opts.ratings,
     availableTranslatedLanguage: [opts.language],
     hasAvailableChapters: 'true',
-    originalLanguage: opts.type && opts.type !== 'all' && opts.type !== 'other' ? LANGS_BY_TYPE[opts.type] : undefined,
+    originalLanguage: opts.type && opts.type !== 'all' && opts.type !== 'other' && opts.type !== 'novel' ? LANGS_BY_TYPE[opts.type] : undefined,
     [`order[${order}]`]: 'desc',
   });
   return { items: res.data.map(mapManga), total: res.total, offset, limit };

@@ -4,7 +4,12 @@
  * so adding a source never requires touching screens.
  */
 
-export type MangaType = 'manga' | 'manhwa' | 'manhua' | 'other';
+export type MangaType = 'manga' | 'manhwa' | 'manhua' | 'novel' | 'other';
+/**
+ * What a source offers. Manga sources give chapters made of images; novel sources give chapters made of text.
+ * The app keeps one library (and one set of sources) per kind, chosen in Settings.
+ */
+export type ContentKind = 'manga' | 'novel';
 export type ContentRating = 'safe' | 'suggestive' | 'erotica' | 'pornographic';
 export type SortOrder = 'relevance' | 'followedCount' | 'latestUploadedChapter' | 'rating' | 'createdAt';
 
@@ -85,6 +90,8 @@ export interface Provider {
   types: MangaType[];
   /** Which sort orders the source supports (the UI hides the others). */
   sorts: SortOrder[];
+  /** What this source serves. Default: 'manga' (image chapters). 'novel' sources must implement `getChapterText`. */
+  kind?: ContentKind;
   /** An 18+ source: hidden everywhere (lists, search, Discover) unless "Show mature titles" is on. */
   adult?: boolean;
 
@@ -96,12 +103,16 @@ export interface Provider {
   getChapters(manga: Manga, language: string): Promise<Chapter[]>;
   /** Image URLs for one chapter, in reading order. */
   getChapterPages(chapterId: string, dataSaver: boolean): Promise<string[]>;
+  /** Novel sources only: the paragraphs of one chapter, in reading order (plain text, no images). */
+  getChapterText?(chapterId: string): Promise<string[]>;
   getStats?(id: string): Promise<MangaStats>;
 }
 
 // ---------------------------------------------------------------------------
 // Small helpers shared by providers and screens
 // ---------------------------------------------------------------------------
+
+export const kindOfProvider = (p: Pick<Provider, 'kind'>): ContentKind => p.kind ?? 'manga';
 
 /** A chapter can be read in-app only if it has real pages and is not an external link. */
 export const isReadable = (c: Pick<Chapter, 'externalUrl' | 'pages'>) => !c.externalUrl && c.pages > 0;

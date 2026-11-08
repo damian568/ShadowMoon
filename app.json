@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#0A0A14",
     "ios": {
       "bundleIdentifier": "com.shadowmoon.reader",

@@ -4,6 +4,7 @@ import React from 'react';
 import type { ColorValue } from 'react-native';
 
 import { useTotalNew } from '../../store/library';
+import { useScheme } from '../../store/appearance';
 import { colors } from '../../theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -16,6 +17,7 @@ function icon(active: IconName, inactive: IconName) {
 }
 
 export default function TabsLayout() {
+  useScheme();
   const totalNew = useTotalNew();
   return (
     <Tabs

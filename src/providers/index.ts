@@ -13,18 +13,25 @@ import { mangadexProvider } from './mangadex';
 import { mangareadProvider } from './mangaread';
 import { asuraProvider } from './asura';
 import { rinkoProvider } from './rinko';
+import { rinkoNovelsProvider } from './rinkonovels';
+import { novelbinProvider } from './novelbin';
+import { readnovelfullProvider } from './readnovelfull';
+import { freewebnovelProvider } from './freewebnovel';
+import { manhuaplusProvider } from './manhuaplus';
+import { tcbscansProvider } from './tcbscans';
 import { mgekoProvider } from './mgeko';
 import { manga18clubProvider } from './manga18club';
 import { manhwa18Provider } from './manhwa18';
 import { arenascanProvider, hentai20Provider, kingofshojoProvider, rokariProvider, thunderscansProvider } from './themesia';
 import { vortexProvider } from './vortex';
-import type { Chapter, Manga, MangaStats, MangaType, Page, Provider, SearchOptions } from './types';
+import { kindOfProvider, type Chapter, type ContentKind, type Manga, type MangaStats, type MangaType, type Page, type Provider, type SearchOptions } from './types';
 
 export * from './types';
 
 export const DEFAULT_PROVIDER_ID = mangadexProvider.id;
+export const DEFAULT_NOVEL_PROVIDER_ID = rinkoNovelsProvider.id;
 
-const providers: Provider[] = [mangadexProvider, mangareadProvider, kingofshojoProvider, arenascanProvider, vortexProvider, asuraProvider, thunderscansProvider, mgekoProvider, rokariProvider, rinkoProvider, hentai20Provider, manhwa18Provider, manga18clubProvider];
+const providers: Provider[] = [mangadexProvider, mangareadProvider, kingofshojoProvider, arenascanProvider, vortexProvider, asuraProvider, thunderscansProvider, mgekoProvider, rokariProvider, rinkoProvider, hentai20Provider, manhwa18Provider, manga18clubProvider, manhuaplusProvider, tcbscansProvider, rinkoNovelsProvider, novelbinProvider, readnovelfullProvider, freewebnovelProvider];
 
 /** Add a new source. Call once at startup (see README, "Adding a provider"). */
 export function registerProvider(p: Provider) {
@@ -35,16 +42,23 @@ export function registerProvider(p: Provider) {
 
 export const listProviders = (): readonly Provider[] => providers;
 
-/** The sources to show in the app. 18+ sources are left out unless mature titles are switched on. */
-export const visibleProviders = (showMature: boolean): readonly Provider[] => providers.filter((p) => showMature || !p.adult);
+/**
+ * The sources to show in the app for one kind of content (manga by default).
+ * 18+ sources are left out unless mature titles are switched on.
+ */
+export const visibleProviders = (showMature: boolean, kind: ContentKind = 'manga'): readonly Provider[] =>
+  providers.filter((p) => kindOfProvider(p) === kind && (showMature || !p.adult));
 
-/** The id to actually use: a chosen 18+ source falls back to the default one while mature titles are off. */
-export const usableProviderId = (id: string | undefined, showMature: boolean): string =>
-  visibleProviders(showMature).some((p) => p.id === id) ? id! : DEFAULT_PROVIDER_ID;
+/** The id to actually use: a source that is gone, of the other kind or 18+ (while off) falls back to the kind's default. */
+export const usableProviderId = (id: string | undefined, showMature: boolean, kind: ContentKind = 'manga'): string =>
+  visibleProviders(showMature, kind).some((p) => p.id === id) ? id! : kind === 'novel' ? DEFAULT_NOVEL_PROVIDER_ID : DEFAULT_PROVIDER_ID;
 
 export function getProvider(id: string | undefined): Provider {
   return providers.find((p) => p.id === id) ?? providers.find((p) => p.id === DEFAULT_PROVIDER_ID)!;
 }
+
+/** Which library a title belongs to, worked out from its (app-wide) id. Unknown sources count as manga. */
+export const kindOfId = (id: string): ContentKind => kindOfProvider(splitId(id).provider);
 
 export const makeId = (providerId: string, rawId: string) =>
   providerId === DEFAULT_PROVIDER_ID ? rawId : `${providerId}:${rawId}`;
@@ -102,11 +116,13 @@ export interface MultiSearchState {
  * so one site being down never breaks the search. Pass the returned `state` back for the next page.
  */
 export async function searchAll(
-  opts: SearchOptions,
+  opts: SearchOptions & { kind?: ContentKind },
   state: MultiSearchState = { offsets: {}, done: [] },
 ): Promise<{ items: Manga[]; state: MultiSearchState; hasMore: boolean }> {
   const mature = opts.ratings.includes('pornographic'); // 18+ sources only take part when mature titles are on
-  const usable = (p: Provider) => !state.done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult);
+  const kind = opts.kind ?? 'manga';
+  const usable = (p: Provider) =>
+    kindOfProvider(p) === kind && !state.done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult);
   const active = providers.filter(usable);
   const settled = await Promise.allSettled(
     active.map((p) => searchManga({ ...opts, provider: p.id, offset: state.offsets[p.id] ?? 0 })),
@@ -137,7 +153,7 @@ export async function searchAll(
   for (let i = 0; lists.some((l) => i < l.length); i++) {
     for (const l of lists) if (i < l.length) items.push(l[i]);
   }
-  const hasMore = providers.some((p) => !done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult));
+  const hasMore = providers.some((p) => kindOfProvider(p) === kind && !done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult));
   return { items, state: { offsets, done }, hasMore };
 }
 
@@ -175,6 +191,13 @@ export async function getChapters(manga: Pick<Manga, 'id' | 'chapterNumbersReset
 
 export function getChapterPages(mangaId: string, chapterId: string, dataSaver: boolean): Promise<string[]> {
   return splitId(mangaId).provider.getChapterPages(chapterId, dataSaver);
+}
+
+/** The paragraphs of a novel chapter (novel sources only). */
+export async function getChapterText(mangaId: string, chapterId: string): Promise<string[]> {
+  const { provider } = splitId(mangaId);
+  if (!provider.getChapterText) throw new Error(`${provider.name} has no text chapters.`);
+  return provider.getChapterText(chapterId);
 }
 
 export async function getStats(id: string): Promise<MangaStats | null> {

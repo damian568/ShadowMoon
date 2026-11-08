@@ -175,3 +175,34 @@ describe('two phones', () => {
     expect(merged.entries.m1.readChapters).toEqual(['1']);
   });
 });
+
+describe('the Dark/Light choice belongs to the account', () => {
+  it('records when it changed, but not when it is set to what it already is', () => {
+    const light = run(fresh(), { type: 'settings', patch: { appearance: 'light' } });
+    expect(light.settings.appearance).toBe('light');
+    expect(light.settings.appearanceAt).toBeGreaterThan(0);
+    const same = run(light, { type: 'settings', patch: { appearance: 'light' } });
+    expect(same.settings.appearanceAt).toBe(light.settings.appearanceAt);
+    expect(run(fresh(), { type: 'settings', patch: { dataSaver: true } }).settings.appearanceAt).toBeUndefined();
+  });
+
+  it('is restored from the account on a new phone', () => {
+    const s = run(fresh(), { type: 'adoptAccount', uid: 'alice' }, { type: 'mergeAppearance', appearance: 'light', at: 500 });
+    expect(s.settings).toMatchObject({ appearance: 'light', appearanceAt: 500 });
+  });
+
+  it('keeps whichever copy changed last', () => {
+    const phone = run(fresh(), { type: 'mergeAppearance', appearance: 'light', at: 500 });
+    expect(run(phone, { type: 'mergeAppearance', appearance: 'dark', at: 400 })).toBe(phone); // older: ignored
+    expect(run(phone, { type: 'mergeAppearance', appearance: 'light', at: 500 })).toBe(phone); // same: nothing to do
+    expect(run(phone, { type: 'mergeAppearance', appearance: 'dark', at: 600 }).settings.appearance).toBe('dark'); // newer wins
+  });
+
+  it('goes back to dark when signing out, and is not carried over to another account', () => {
+    const alice = run(fresh(), { type: 'adoptAccount', uid: 'alice' }, { type: 'mergeAppearance', appearance: 'light', at: 500 });
+    expect(run(alice, { type: 'resetAll' }).settings).toMatchObject({ appearance: 'dark' });
+    const bob = run(alice, { type: 'adoptAccount', uid: 'bob' });
+    expect(bob.settings.appearance).toBe('dark');
+    expect(bob.settings.appearanceAt).toBeUndefined();
+  });
+});

@@ -22,17 +22,29 @@ async function throttle() {
   if (start > now) await sleep(start - now);
 }
 
-export async function getHtmlText(url: string, siteName: string, attempt = 0): Promise<string> {
+/**
+ * Fetch a page as text. Pass `form` to submit a plain HTML form (POST, as a browser does for a site's search box).
+ */
+export async function getHtmlText(url: string, siteName: string, attempt = 0, form?: Record<string, string>): Promise<string> {
   await throttle();
   let res: Response;
   try {
-    res = await fetch(url, { headers: HEADERS });
+    res = await fetch(
+      url,
+      form
+        ? {
+            method: 'POST',
+            headers: { ...HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(form).toString(),
+          }
+        : { headers: HEADERS },
+    );
   } catch {
     throw new Error('Network error — check your internet connection.');
   }
   if ((res.status === 429 || res.status >= 500) && attempt < 2) {
     await sleep(1500 * (attempt + 1));
-    return getHtmlText(url, siteName, attempt + 1);
+    return getHtmlText(url, siteName, attempt + 1, form);
   }
   if (res.status === 404) throw new Error(`Not found on ${siteName}.`);
   if (res.status === 403 || res.status === 503) {
@@ -48,6 +60,11 @@ export async function getHtmlText(url: string, siteName: string, attempt = 0): P
 
 export async function getHtml(url: string, siteName: string): Promise<HTMLElement> {
   return parse(await getHtmlText(url, siteName));
+}
+
+/** Submit a site's search form (POST) and read the page it answers with. */
+export async function postHtml(url: string, form: Record<string, string>, siteName: string): Promise<HTMLElement> {
+  return parse(await getHtmlText(url, siteName, 0, form));
 }
 
 export const text = (el: HTMLElement | null | undefined) => (el ? el.text.replace(/\s+/g, ' ').trim() : '');

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState } from 'react-native';
 
 import { getChapters, getMangaByIds, primeChapterCache } from '../providers';
-import { isInLibrary, toLite, useLibrary, useStableCallback, type UpdateResult } from './library';
+import { libraryOfKind, toLite, useLibrary, useStableCallback, type UpdateResult } from './library';
 
 interface UpdatesApi {
   checking: boolean;
@@ -14,7 +14,7 @@ interface UpdatesApi {
 const Ctx = createContext<UpdatesApi | null>(null);
 
 /**
- * Checks MangaDex for new chapters of everything in the library.
+ * Checks the sources for new chapters of everything in the library you are looking at (manga or light novels).
  * 1. One batched request (100 titles each) returns `latestUploadedChapter` for every title.
  * 2. Only titles where that changed get their chapter list re-fetched.
  * Runs on launch and whenever the app returns to the foreground (if the last check is stale).
@@ -28,7 +28,7 @@ export function UpdatesProvider({ children }: { children: React.ReactNode }) {
 
   const checkNow = useStableCallback(async () => {
     if (running.current) return;
-    const tracked = Object.values(state.entries).filter(isInLibrary);
+    const tracked = libraryOfKind(state.entries, state.settings.contentKind);
     const language = state.settings.language;
     running.current = true;
     setChecking(true);
@@ -83,9 +83,11 @@ export function UpdatesProvider({ children }: { children: React.ReactNode }) {
     if (!state.lastUpdateCheck || Date.now() - state.lastUpdateCheck > staleMs) checkNow();
   });
 
+  // After loading, and when switching between manga and novels: check the library in view (if it is stale).
+  const kind = state.settings.contentKind;
   useEffect(() => {
     if (state.hydrated) maybeAutoCheck();
-  }, [state.hydrated, maybeAutoCheck]);
+  }, [kind, state.hydrated, maybeAutoCheck]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => s === 'active' && maybeAutoCheck());
