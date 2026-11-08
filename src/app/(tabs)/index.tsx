@@ -5,12 +5,13 @@ import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getProvider, searchManga, usableProviderId, type Manga, type MangaType, type SortOrder } from '../../providers';
+import { getProvider, searchManga, type Manga, type MangaType, type SortOrder } from '../../providers';
 import { MangaCard } from '../../components/MangaCard';
 import { ProgressBar, SectionHeader } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
-import { contentRatings, isInLibrary, progressOf, useLibrary, useSettings, type LibraryEntry } from '../../store/library';
-import { colors, radius, spacing } from '../../theme';
+import { activeProviderId, contentRatings, progressOf, useKindLibrary, useSettings, type LibraryEntry } from '../../store/library';
+import { useScheme } from '../../store/appearance';
+import { colors, radius, spacing, themedStyles } from '../../theme';
 
 const SECTIONS: { key: string; title: string; subtitle: string; type: MangaType | 'all'; order: SortOrder }[] = [
   { key: 'manhwa', title: 'Popular Manhwa', subtitle: 'Korean webtoons everyone follows', type: 'manhwa', order: 'followedCount' },
@@ -20,19 +21,29 @@ const SECTIONS: { key: string; title: string; subtitle: string; type: MangaType 
   { key: 'manhua', title: 'Popular Manhua', subtitle: 'Chinese comics', type: 'manhua', order: 'followedCount' },
 ];
 
+// Light novels: the same idea, without the manga/manhwa/manhua split.
+const NOVEL_SECTIONS: typeof SECTIONS = [
+  { key: 'novel-popular', title: 'Popular Novels', subtitle: 'What readers are into right now', type: 'all', order: 'followedCount' },
+  { key: 'novel-fresh', title: 'Freshly Updated', subtitle: 'New chapters just dropped', type: 'all', order: 'latestUploadedChapter' },
+  { key: 'novel-browse', title: 'Browse Novels', subtitle: 'Straight from the source', type: 'all', order: 'relevance' },
+];
+
 export default function DiscoverScreen() {
+  useScheme();
   const insets = useSafeAreaInsets();
-  const { state } = useLibrary();
-  const provider = getProvider(usableProviderId(state.settings.provider, state.settings.showMature));
+  const [settings] = useSettings();
+  const novel = settings.contentKind === 'novel';
+  const provider = getProvider(activeProviderId(settings));
   const [refreshKey, setRefreshKey] = useState(0);
+  const library = useKindLibrary();
 
   const continueReading = useMemo(
     () =>
-      Object.values(state.entries)
-        .filter((e) => isInLibrary(e) && e.lastReadAt && e.lastChapterId && e.status !== 'completed')
+      library
+        .filter((e) => e.lastReadAt && e.lastChapterId && e.status !== 'completed')
         .sort((a, b) => (b.lastReadAt ?? 0) - (a.lastReadAt ?? 0))
         .slice(0, 10),
-    [state.entries],
+    [library],
   );
 
   return (
@@ -49,7 +60,7 @@ export default function DiscoverScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.appName}>ShadowMoon</Text>
-          <Text style={styles.tagline}>Manga & Manhwa · no ads, ever</Text>
+          <Text style={styles.tagline}>{novel ? 'Light Novels' : 'Manga & Manhwa'} · no ads, ever</Text>
         </View>
         <Pressable onPress={() => router.push('/search')} hitSlop={12} style={styles.searchBtn}>
           <Ionicons name="search" size={20} color={colors.text} />
@@ -70,7 +81,7 @@ export default function DiscoverScreen() {
         </>
       )}
 
-      {SECTIONS.filter(
+      {(novel ? NOVEL_SECTIONS : SECTIONS).filter(
         (s) => provider.sorts.includes(s.order) && (s.type === 'all' || provider.types.includes(s.type)),
       ).map((s) => (
         <DiscoverSection key={`${provider.id}-${s.key}`} section={s} refreshKey={refreshKey} />
@@ -82,19 +93,20 @@ export default function DiscoverScreen() {
 }
 
 function DiscoverSection({ section, refreshKey }: { section: (typeof SECTIONS)[number]; refreshKey: number }) {
+  useScheme();
   const [settings] = useSettings();
   const ratings = contentRatings(settings);
   const { data, loading, error, reload } = useAsync<Manga[]>(
     () =>
       searchManga({
-        provider: usableProviderId(settings.provider, settings.showMature),
+        provider: activeProviderId(settings),
         type: section.type,
         order: section.order,
         language: settings.language,
         ratings,
         limit: 15,
       }).then((p) => p.items),
-    [section.key, settings.provider, settings.language, settings.showMature, refreshKey],
+    [section.key, settings.provider, settings.novelProvider, settings.contentKind, settings.language, settings.showMature, refreshKey],
   );
 
   return (
@@ -137,6 +149,7 @@ function DiscoverSection({ section, refreshKey }: { section: (typeof SECTIONS)[n
 }
 
 function ContinueCard({ entry }: { entry: LibraryEntry }) {
+  useScheme();
   const { percent, read, total } = progressOf(entry);
   return (
     <Pressable
@@ -165,7 +178,7 @@ function ContinueCard({ entry }: { entry: LibraryEntry }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   hero: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.md },
   logo: {
     width: 44,
@@ -206,4 +219,4 @@ const styles = StyleSheet.create({
   continueAction: { color: colors.accent, fontWeight: '700', fontSize: 13 },
   continuePercent: { color: colors.textMuted, fontSize: 12, marginLeft: 'auto' },
   credit: { color: colors.textDim, textAlign: 'center', fontSize: 12, marginTop: spacing.xl },
-});
+}));

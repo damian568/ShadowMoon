@@ -8,7 +8,8 @@ import { Button, Loading } from '../components/ui';
 import { useAuth } from '../store/auth';
 import { useLibraryList, useStableCallback, type LibraryEntry } from '../store/library';
 import { useSignOut } from '../sync/useSignOut';
-import { colors, radius, spacing, statusColors } from '../theme';
+import { useScheme } from '../store/appearance';
+import { colors, radius, spacing, statusColors, themedStyles } from '../theme';
 import {
   nicknameFor,
   validateEmailChange,
@@ -46,6 +47,7 @@ function useAction() {
 }
 
 export default function ProfileScreen() {
+  useScheme();
   const auth = useAuth();
   const signOut = useSignOut();
 
@@ -100,6 +102,7 @@ export default function ProfileScreen() {
 const CARD_WIDTH = 104;
 
 function LibraryOverview() {
+  useScheme();
   const all = useLibraryList('all');
   const reading = useLibraryList('reading');
   const done = useLibraryList('completed');
@@ -151,6 +154,7 @@ function LibraryOverview() {
 }
 
 function Stat({ value, label }: { value: number; label: string }) {
+  useScheme();
   return (
     <View style={styles.stat}>
       <Text style={styles.statValue}>{value.toLocaleString()}</Text>
@@ -164,6 +168,7 @@ function Stat({ value, label }: { value: number; label: string }) {
 // ---------------------------------------------------------------------------
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  useScheme();
   return (
     <View style={{ marginTop: spacing.xl }}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -176,12 +181,14 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 function Result({ error, info }: { error: string | null; info: string | null }) {
+  useScheme();
   if (error) return <Text style={styles.error}>{error}</Text>;
   if (info) return <Text style={styles.success}>{info}</Text>;
   return null;
 }
 
 function NicknameSection({ initial, placeholder }: { initial: string; placeholder: string }) {
+  useScheme();
   const auth = useAuth();
   const action = useAction();
   const [nickname, setNickname] = useState(initial);
@@ -223,6 +230,7 @@ function NicknameSection({ initial, placeholder }: { initial: string; placeholde
 }
 
 function EmailSection({ currentEmail }: { currentEmail: string | null }) {
+  useScheme();
   const auth = useAuth();
   const action = useAction();
   const [newEmail, setNewEmail] = useState('');
@@ -283,6 +291,7 @@ function EmailSection({ currentEmail }: { currentEmail: string | null }) {
 }
 
 function PasswordSection() {
+  useScheme();
   const auth = useAuth();
   const action = useAction();
   const [current, setCurrent] = useState('');
@@ -328,7 +337,7 @@ function PasswordSection() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   header: { alignItems: 'center', marginTop: spacing.md },
   avatar: {
     width: 84,
@@ -377,4 +386,4 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 13, lineHeight: 18, marginTop: spacing.md },
   success: { color: colors.success, fontSize: 13, lineHeight: 18, marginTop: spacing.md },
   footnote: { color: colors.textDim, fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: spacing.md },
-});
+}));

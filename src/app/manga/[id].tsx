@@ -39,7 +39,8 @@ import {
   type MangaLite,
   type ReadingStatus,
 } from '../../store/library';
-import { colors, radius, spacing, statusColors, statusLabels, typeColors } from '../../theme';
+import { useScheme } from '../../store/appearance';
+import { colors, radius, spacing, statusColors, statusLabels, typeColors, themedStyles, currentScheme } from '../../theme';
 import { showTitleActions } from '../../utils/titleActions';
 import { shortDate } from '../../utils/time';
 
@@ -52,6 +53,7 @@ const STATUS_BUTTONS: { key: ReadingStatus; icon: React.ComponentProps<typeof Io
 const tap = () => Haptics.selectionAsync().catch(() => {});
 
 export default function MangaScreen() {
+  useScheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const lib = useLibrary();
@@ -71,7 +73,7 @@ export default function MangaScreen() {
   const anilist = useAsync<AniListInfo | null>(
     async () => {
       const m = await getMangaCached(id);
-      return getAniListInfo(m);
+      return m.type === 'novel' ? null : getAniListInfo(m); // AniList scores are looked up for comics only
     },
     [id],
   );
@@ -135,7 +137,7 @@ export default function MangaScreen() {
       ];
       if (Platform.OS === 'ios') {
         ActionSheetIOS.showActionSheetWithOptions(
-          { title: chapterLabel(c, true), options: [...actions.map((a) => a.label), 'Cancel'], cancelButtonIndex: actions.length, userInterfaceStyle: 'dark' },
+          { title: chapterLabel(c, true), options: [...actions.map((a) => a.label), 'Cancel'], cancelButtonIndex: actions.length, userInterfaceStyle: currentScheme() },
           (i) => actions[i]?.run(),
         );
       } else {
@@ -177,7 +179,7 @@ export default function MangaScreen() {
     <View>
       <View style={[styles.backdrop, { height: 260 + insets.top }]}>
         <Image source={manga.coverUrlLarge || undefined} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={28} />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,10,20,0.55)' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} />
         <View style={styles.backdropFade} />
       </View>
 
@@ -344,6 +346,7 @@ const ChapterRow = memo(function ChapterRow({ chapter, read, current, onPress, o
   onToggleRead: (c: Chapter) => void;
   onLongPress: (c: Chapter) => void;
 }) {
+  useScheme();
   const external = !isReadable(chapter);
   const sub = [chapter.chapter && chapter.title ? chapter.title : null, chapter.group, shortDate(chapter.readableAt)]
     .filter(Boolean)
@@ -381,6 +384,7 @@ const ChapterRow = memo(function ChapterRow({ chapter, read, current, onPress, o
 });
 
 function Description({ text }: { text: string }) {
+  useScheme();
   const [open, setOpen] = useState(false);
   return (
     <Pressable onPress={() => setOpen((o) => !o)} style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
@@ -391,6 +395,7 @@ function Description({ text }: { text: string }) {
 }
 
 function Pill({ label, color }: { label: string; color: string }) {
+  useScheme();
   return (
     <View style={[styles.pill, { borderColor: color }]}>
       <Text style={[styles.pillText, { color }]}>{label}</Text>
@@ -399,6 +404,7 @@ function Pill({ label, color }: { label: string; color: string }) {
 }
 
 function Meta({ icon, text, color = colors.textMuted }: { icon: React.ComponentProps<typeof Ionicons>['name']; text: string; color?: string }) {
+  useScheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
       <Ionicons name={icon} size={13} color={color} />
@@ -410,7 +416,7 @@ function Meta({ icon, text, color = colors.textMuted }: { icon: React.ComponentP
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const compact = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n));
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
   backdropFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 90, backgroundColor: colors.bg, opacity: 0.85 },
   top: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
@@ -420,7 +426,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   title: { color: colors.text, fontSize: 22, fontWeight: '800', lineHeight: 27 },
   authors: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
@@ -514,4 +520,4 @@ const styles = StyleSheet.create({
   externalText: { color: colors.textMuted, fontSize: 10, fontWeight: '700' },
   readToggle: { paddingLeft: spacing.md },
   emptyChapters: { color: colors.textMuted, textAlign: 'center', padding: spacing.xl },
-});
+}));

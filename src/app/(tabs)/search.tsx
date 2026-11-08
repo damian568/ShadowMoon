@@ -19,7 +19,6 @@ import {
   searchAll,
   searchManga,
   splitId,
-  usableProviderId,
   visibleProviders,
   type Manga,
   type MangaType,
@@ -29,8 +28,9 @@ import {
 import { externalSites } from '../../providers/external';
 import { MangaCard } from '../../components/MangaCard';
 import { Chip, EmptyState, ErrorView, SourceIcon } from '../../components/ui';
-import { contentRatings, useSettings } from '../../store/library';
-import { colors, radius, spacing } from '../../theme';
+import { activeProviderId, contentRatings, useSettings } from '../../store/library';
+import { useScheme } from '../../store/appearance';
+import { colors, radius, spacing, themedStyles } from '../../theme';
 
 const TYPES: { key: MangaType | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -50,14 +50,16 @@ const COLUMNS = 3;
 const PAGE = 30;
 
 export default function SearchScreen() {
+  useScheme();
   const params = useLocalSearchParams<{ type?: string; order?: string; q?: string; n?: string }>();
   const [settings] = useSettings();
   // 'all' searches every source at once when you type a title; browsing (no title) uses your chosen source.
   const [chosenSource, setSource] = useState<string>('all');
   // 18+ sources are left out entirely while "Show mature titles" is off.
-  const sources = visibleProviders(settings.showMature);
+  const novel = settings.contentKind === 'novel';
+  const sources = visibleProviders(settings.showMature, settings.contentKind);
   const source = chosenSource === 'all' || sources.some((p) => p.id === chosenSource) ? chosenSource : 'all';
-  const provider = getProvider(source === 'all' ? usableProviderId(settings.provider, settings.showMature) : source);
+  const provider = getProvider(source === 'all' ? activeProviderId(settings) : source);
   const { width } = useWindowDimensions();
   const cardWidth = Math.floor((width - spacing.lg * 2 - spacing.md * (COLUMNS - 1)) / COLUMNS);
 
@@ -113,11 +115,12 @@ export default function SearchScreen() {
       try {
         const base = {
           title: debounced || undefined,
-          type,
+          type: novel ? ('all' as const) : type, // novels have no manga/manhwa/manhua split
           order: debounced ? ('relevance' as SortOrder) : order,
           language: settings.language,
           ratings: contentRatings(settings),
           limit: PAGE,
+          kind: settings.contentKind,
         };
         let pageItems: Manga[];
         if (source === 'all' && debounced) {
@@ -130,7 +133,7 @@ export default function SearchScreen() {
           setHasMore(res.hasMore);
           setTotal(0);
         } else {
-          const page = await searchManga({ ...base, provider: source === 'all' ? usableProviderId(settings.provider, settings.showMature) : source, offset });
+          const page = await searchManga({ ...base, provider: source === 'all' ? activeProviderId(settings) : source, offset });
           if (id !== requestId.current) return;
           pageItems = page.items;
           setHasMore(offset + page.items.length < page.total);
@@ -150,7 +153,7 @@ export default function SearchScreen() {
         }
       }
     },
-    [debounced, type, order, settings, source],
+    [debounced, type, order, settings, source, novel],
   );
 
   // Start (or restart) the search whenever a filter changes. It begins on the next tick, so the loading state
@@ -171,7 +174,7 @@ export default function SearchScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search manga, manhwa, manhua…"
+          placeholder={novel ? 'Search light novels…' : 'Search manga, manhwa, manhua…'}
           placeholderTextColor={colors.textDim}
           style={styles.input}
           returnKeyType="search"
@@ -197,7 +200,7 @@ export default function SearchScreen() {
             ))}
           </ScrollView>
         )}
-        {externalSites.length > 0 && (
+        {!novel && externalSites.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chips, { paddingBottom: 0 }]}>
             {externalSites.map((site) => (
               <Chip
@@ -213,13 +216,15 @@ export default function SearchScreen() {
             ))}
           </ScrollView>
         )}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {TYPES.filter((t) => t.key === 'all' || provider.types.includes(t.key as MangaType)).map((t) => (
-            <Chip key={t.key} label={t.label} active={type === t.key} onPress={() => setType(t.key)} />
-          ))}
-        </ScrollView>
+        {!novel && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {TYPES.filter((t) => t.key === 'all' || provider.types.includes(t.key as MangaType)).map((t) => (
+              <Chip key={t.key} label={t.label} active={type === t.key} onPress={() => setType(t.key)} />
+            ))}
+          </ScrollView>
+        )}
         {!debounced && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chips, { paddingTop: 0 }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chips, !novel && { paddingTop: 0 }]}>
             {ORDERS.filter((o) => provider.sorts.includes(o.key)).map((o) => (
               <Chip
                 key={o.key}
@@ -289,7 +294,7 @@ export default function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -315,4 +320,4 @@ const styles = StyleSheet.create({
   },
   groupTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
   groupCount: { color: colors.textMuted, fontSize: 13 },
-});
+}));

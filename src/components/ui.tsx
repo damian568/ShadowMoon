@@ -3,7 +3,8 @@ import { Image } from 'expo-image';
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, radius, spacing } from '../theme';
+import { useScheme } from '../store/appearance';
+import { colors, radius, spacing, themedStyles } from '../theme';
 
 export function ProgressBar({ percent, height = 4, color = colors.accent, style }: {
   percent: number;
@@ -11,8 +12,9 @@ export function ProgressBar({ percent, height = 4, color = colors.accent, style 
   color?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  useScheme();
   return (
-    <View style={[{ height, borderRadius: height, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden' }, style]}>
+    <View style={[{ height, borderRadius: height, backgroundColor: colors.control, overflow: 'hidden' }, style]}>
       <View style={{ width: `${Math.max(0, Math.min(100, percent))}%`, height: '100%', backgroundColor: color, borderRadius: height }} />
     </View>
   );
@@ -23,6 +25,7 @@ export function ProgressBar({ percent, height = 4, color = colors.accent, style 
  * or the image fails to load.
  */
 export function SourceIcon({ name, iconUrl, size = 18 }: { name: string; iconUrl?: string; size?: number }) {
+  useScheme();
   const [failed, setFailed] = useState(false);
   const radiusPx = Math.round(size * 0.25);
   if (iconUrl && !failed) {
@@ -62,6 +65,7 @@ export function Chip({ label, active, onPress, icon, leading, color = colors.acc
   color?: string;
   count?: number;
 }) {
+  useScheme();
   return (
     <Pressable
       onPress={onPress}
@@ -90,6 +94,7 @@ export function Button({ label, onPress, icon, variant = 'primary', style, disab
   disabled?: boolean;
   loading?: boolean;
 }) {
+  useScheme();
   const bg = variant === 'primary' ? colors.accentStrong : variant === 'secondary' ? colors.surfaceAlt : 'transparent';
   const fg = variant === 'primary' ? '#fff' : colors.text;
   return (
@@ -116,6 +121,7 @@ export function EmptyState({ icon, title, message, action }: {
   message?: string;
   action?: React.ReactNode;
 }) {
+  useScheme();
   return (
     <View style={styles.empty}>
       <View style={styles.emptyIcon}>
@@ -129,6 +135,7 @@ export function EmptyState({ icon, title, message, action }: {
 }
 
 export function Loading({ label }: { label?: string }) {
+  useScheme();
   return (
     <View style={styles.empty}>
       <ActivityIndicator color={colors.accent} size="large" />
@@ -138,6 +145,7 @@ export function Loading({ label }: { label?: string }) {
 }
 
 export function ErrorView({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  useScheme();
   return (
     <EmptyState
       icon="cloud-offline-outline"
@@ -149,6 +157,7 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry?: () 
 }
 
 export function SectionHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
+  useScheme();
   return (
     <View style={styles.sectionHeader}>
       <View style={{ flex: 1 }}>
@@ -161,6 +170,7 @@ export function SectionHeader({ title, subtitle, right }: { title: string; subti
 }
 
 export function Badge({ label, color = colors.accent, textColor = colors.bg }: { label: string; color?: string; textColor?: string }) {
+  useScheme();
   return (
     <View style={[styles.badge, { backgroundColor: color }]}>
       <Text style={[styles.badgeText, { color: textColor }]}>{label}</Text>
@@ -168,7 +178,7 @@ export function Badge({ label, color = colors.accent, textColor = colors.bg }: {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -214,4 +224,4 @@ const styles = StyleSheet.create({
   sectionSubtitle: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
   badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill, alignSelf: 'flex-start' },
   badgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
-});
+}));

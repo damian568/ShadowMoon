@@ -24,12 +24,14 @@ import {
   getChaptersCached,
   getMangaCached,
   isReadable,
+  kindOfId,
   type Chapter,
 } from '../../providers';
+import { NovelReader } from '../../components/NovelReader';
 import { Button, ErrorView, Loading } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
 import { toLite, useLibrary } from '../../store/library';
-import { colors, radius, spacing } from '../../theme';
+import { colors as appColors, darkColors as colors, radius, spacing } from '../../theme';
 
 type Mode = 'vertical' | 'paged';
 
@@ -38,6 +40,8 @@ const VIEWABILITY = { itemVisiblePercentThreshold: 10 };
 export default function ReaderScreen() {
   const { chapterId, mangaId } = useLocalSearchParams<{ chapterId: string; mangaId: string }>();
   // Fresh reader state for every chapter (page index, read marker, loaded data).
+  // Light novels are text, so they get their own reader.
+  if (kindOfId(mangaId) === 'novel') return <NovelReader key={chapterId} chapterId={chapterId} mangaId={mangaId} />;
   return <Reader key={chapterId} chapterId={chapterId} mangaId={mangaId} />;
 }
 
@@ -118,7 +122,7 @@ function Reader({ chapterId, mangaId }: { chapterId: string; mangaId: string }) 
 
   if (q.loading && !q.data) {
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: appColors.bg }]}>
         <StatusBar hidden />
         <Loading label="Loading pages…" />
         <CloseButton top={insets.top} />
@@ -127,7 +131,7 @@ function Reader({ chapterId, mangaId }: { chapterId: string; mangaId: string }) 
   }
   if (q.error && !q.data) {
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: appColors.bg }]}>
         <ErrorView message={q.error} onRetry={q.reload} />
         <CloseButton top={insets.top} />
       </View>

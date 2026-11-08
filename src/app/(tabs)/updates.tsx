@@ -5,15 +5,18 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { Button, EmptyState, ProgressBar } from '../../components/ui';
-import { isInLibrary, progressOf, useLibrary, type LibraryEntry } from '../../store/library';
+import { progressOf, useKindLibrary, useLibrary, type LibraryEntry } from '../../store/library';
 import { useUpdates } from '../../store/updates';
-import { colors, radius, spacing, statusColors, statusLabels } from '../../theme';
+import { useScheme } from '../../store/appearance';
+import { colors, radius, spacing, statusColors, statusLabels, themedStyles } from '../../theme';
 import { timeAgo } from '../../utils/time';
 
 const RECENT_DAYS = 14;
 
 export default function UpdatesScreen() {
+  useScheme();
   const { state, clearNew } = useLibrary();
+  const kindLibrary = useKindLibrary();
   const { checking, progress, error, checkNow } = useUpdates();
 
   // "Now" is read outside of render (rendering must be pure) and refreshed each time the tab is shown.
@@ -25,7 +28,7 @@ export default function UpdatesScreen() {
   );
 
   const sections = useMemo(() => {
-    const lib = Object.values(state.entries).filter(isInLibrary);
+    const lib = kindLibrary;
     const fresh = lib.filter((e) => e.newChapters > 0).sort((a, b) => (b.lastUpdateFoundAt ?? 0) - (a.lastUpdateFoundAt ?? 0));
     const cutoff = now - RECENT_DAYS * 24 * 3600 * 1000;
     const recent = lib
@@ -35,9 +38,9 @@ export default function UpdatesScreen() {
     if (fresh.length) out.push({ title: 'New chapters', key: 'new', data: fresh });
     if (recent.length) out.push({ title: `Updated in the last ${RECENT_DAYS} days`, key: 'recent', data: recent });
     return out;
-  }, [state.entries, now]);
+  }, [kindLibrary, now]);
 
-  const libraryCount = useMemo(() => Object.values(state.entries).filter(isInLibrary).length, [state.entries]);
+  const libraryCount = kindLibrary.length;
   const hasNew = sections.some((s) => s.key === 'new');
 
   return (
@@ -91,7 +94,7 @@ export default function UpdatesScreen() {
           title={libraryCount ? 'You are all caught up' : 'No titles tracked yet'}
           message={
             libraryCount
-              ? 'ShadowMoon checks MangaDex for new chapters whenever you open the app. Pull down to check now.'
+              ? 'ShadowMoon checks your sources for new chapters whenever you open the app. Pull down to check now.'
               : 'Add titles to your library and new chapters will show up here.'
           }
           action={
@@ -106,6 +109,7 @@ export default function UpdatesScreen() {
 }
 
 function UpdateRow({ entry }: { entry: LibraryEntry }) {
+  useScheme();
   const { percent, read, total } = progressOf(entry);
   return (
     <Pressable
@@ -137,7 +141,7 @@ function UpdateRow({ entry }: { entry: LibraryEntry }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   statusCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -186,4 +190,4 @@ const styles = StyleSheet.create({
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 8 },
   percent: { color: colors.textMuted, fontSize: 12, minWidth: 70, textAlign: 'right' },
   status: { fontSize: 11, fontWeight: '700', marginTop: 4 },
-});
+}));

@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
 
-import type { Chapter, ContentRating, Manga, MangaType } from '../providers/types';
+import { kindOfId, usableProviderId } from '../providers';
+import type { Scheme } from '../theme';
+import type { Chapter, ContentKind, ContentRating, Manga, MangaType } from '../providers/types';
 import type { SyncedEntry } from '../sync/merge';
 import {
   DEFAULT_SETTINGS,
@@ -14,6 +16,7 @@ import {
   type UpdateResult,
 } from './reducer';
 
+export { NOVEL_FONT_SIZES } from './reducer';
 export type { LibraryEntry, MangaLite, ReaderMode, ReadingStatus, Settings, UpdateResult } from './reducer';
 
 const STORAGE_KEY = 'shadowmoon:state:v1';
@@ -38,6 +41,8 @@ interface LibraryApi {
   adoptAccount: (uid: string) => void;
   /** Used by the sync service: merge the library downloaded from the cloud into this one. */
   mergeRemote: (remote: Record<string, SyncedEntry>) => void;
+  /** Used by the sync service: the account's saved Dark/Light choice (the more recent change wins). */
+  mergeAppearance: (appearance: Scheme, at: number) => void;
   /** Back to a fresh install: empty library and default settings. Used when signing out. */
   resetAll: () => void;
 }
@@ -85,6 +90,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       resetLibrary: () => dispatch({ type: 'reset' }),
       adoptAccount: (uid) => dispatch({ type: 'adoptAccount', uid }),
       mergeRemote: (remote) => dispatch({ type: 'mergeRemote', remote }),
+      mergeAppearance: (appearance, at) => dispatch({ type: 'mergeAppearance', appearance, at }),
       resetAll: () => dispatch({ type: 'resetAll' }),
     }),
     [state],
@@ -107,6 +113,12 @@ export function useEntry(id: string | undefined): LibraryEntry | undefined {
 export function useSettings() {
   const { state, updateSettings } = useLibrary();
   return [state.settings, updateSettings] as const;
+}
+
+/** The source Discover, Search and Settings use right now (the manga source or the novel source, per the chosen kind). */
+export function activeProviderId(settings: Settings): string {
+  const novel = settings.contentKind === 'novel';
+  return usableProviderId(novel ? settings.novelProvider : settings.provider, settings.showMature, settings.contentKind);
 }
 
 export function contentRatings(settings: Settings): ContentRating[] {
@@ -132,22 +144,30 @@ export function toLite(m: Manga): MangaLite {
   return { id: m.id, title: m.title, coverUrl: m.coverUrl, type: m.type as MangaType, pubStatus: m.pubStatus };
 }
 
-export function useLibraryList(filter: 'all' | 'favorite' | ReadingStatus) {
+/** Everything in the library of one kind (manga and light novels are separate libraries). */
+export function libraryOfKind(entries: Record<string, LibraryEntry>, kind: ContentKind): LibraryEntry[] {
+  return Object.values(entries).filter((e) => isInLibrary(e) && kindOfId(e.id) === kind);
+}
+
+/** The library the user is looking at: the entries of the chosen kind (see Settings, "I read"). */
+export function useKindLibrary(): LibraryEntry[] {
   const { state } = useLibrary();
+  return useMemo(() => libraryOfKind(state.entries, state.settings.contentKind), [state.entries, state.settings.contentKind]);
+}
+
+export function useLibraryList(filter: 'all' | 'favorite' | ReadingStatus) {
+  const all = useKindLibrary();
   return useMemo(() => {
-    const list = Object.values(state.entries).filter(isInLibrary);
+    const list = all;
     if (filter === 'all') return list;
     if (filter === 'favorite') return list.filter((e) => e.favorite);
     return list.filter((e) => e.status === filter);
-  }, [state.entries, filter]);
+  }, [all, filter]);
 }
 
 export function useTotalNew() {
-  const { state } = useLibrary();
-  return useMemo(
-    () => Object.values(state.entries).reduce((n, e) => n + (isInLibrary(e) ? e.newChapters : 0), 0),
-    [state.entries],
-  );
+  const list = useKindLibrary();
+  return useMemo(() => list.reduce((n, e) => n + e.newChapters, 0), [list]);
 }
 
 /** A function with a permanent identity that always runs the latest `fn` (handy for effects and listeners). */
