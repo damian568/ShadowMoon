@@ -116,6 +116,30 @@ describe('getHtmlText', () => {
     await expect(getHtmlText('https://site.test/', 'Site')).rejects.toThrow('Network error — check your internet connection.');
   });
 
+  it('spaces requests to the same website 500 ms apart, but never makes another website wait', async () => {
+    jest.restoreAllMocks();
+    const delays: number[] = [];
+    jest.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      delays.push(ms ?? 0);
+      fn();
+      return 0;
+    }) as unknown as typeof setTimeout);
+    jest.spyOn(Date, 'now').mockReturnValue(5_000_000);
+    mockFetch([['.test', '<p>ok</p>']]);
+
+    await Promise.all([
+      getHtmlText('https://busy.test/1', 'Busy'),
+      getHtmlText('https://busy.test/2', 'Busy'),
+      getHtmlText('https://busy.test/3', 'Busy'),
+    ]);
+    expect(delays).toEqual([500, 1000]); // the first goes at once, the next two wait their turn
+
+    delays.length = 0;
+    await Promise.all([getHtmlText('https://other.test/1', 'Other'), getHtmlText('https://another.test/1', 'Another')]);
+    expect(delays).toEqual([]); // different websites do not queue behind busy.test
+    jest.restoreAllMocks();
+  });
+
   it('getHtml parses the page', async () => {
     mockFetch([['site.test', '<h1 id="t">Title</h1>']]);
     const doc = await getHtml('https://site.test/', 'Site');

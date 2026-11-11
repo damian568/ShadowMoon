@@ -41,6 +41,7 @@ import {
 } from '../../store/library';
 import { useScheme } from '../../store/appearance';
 import { colors, radius, spacing, statusColors, statusLabels, typeColors, themedStyles, currentScheme } from '../../theme';
+import { keysFromHere } from '../../utils/chapters';
 import { showTitleActions } from '../../utils/titleActions';
 import { shortDate } from '../../utils/time';
 
@@ -115,13 +116,15 @@ export default function MangaScreen() {
     [lite, lib, id],
   );
 
+  // Ticking a chapter also ticks every chapter shown below it; unticking only changes that one chapter.
   const toggleRead = useCallback(
     (c: Chapter) => {
       if (!lite) return;
       tap();
-      lib.setRead(lite, [c.key], !readSet.has(c.key));
+      if (readSet.has(c.key)) lib.setRead(lite, [c.key], false);
+      else lib.setRead(lite, keysFromHere(listData, c.key), true);
     },
-    [lite, lib, readSet],
+    [lite, lib, readSet, listData],
   );
 
   const chapterMenu = useCallback(

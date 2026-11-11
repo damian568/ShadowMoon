@@ -223,6 +223,31 @@ describe('searchAll', () => {
     expect(ids(res.items)).toEqual(['a1', 'mangaread:b1', 'a2', 'mangaread:b2', 'a3']);
   });
 
+  it('reports results as each source answers, before the slowest one has finished', async () => {
+    let finishSlow!: (p: ReturnType<typeof pageOf>) => void;
+    search('mangadex').mockImplementation(() => new Promise((resolve) => (finishSlow = resolve)));
+    search('mangaread').mockResolvedValue(pageOf([m('b1')], 1));
+    const seen: string[][] = [];
+    const running = searchAll(searchOpts({ title: 'x' }), undefined, (items) => seen.push(ids(items)));
+    await new Promise<void>((r) => setImmediate(() => r())); // the quick source has answered, mangadex has not
+    expect(seen).toEqual([['mangaread:b1']]);
+    finishSlow(pageOf([m('a1')], 1));
+    const res = await running;
+    expect(seen.at(-1)).toEqual(['a1', 'mangaread:b1']);
+    expect(ids(res.items)).toEqual(['a1', 'mangaread:b1']); // the final result is the same as without a callback
+  });
+
+  it('does not report sources that fail or find nothing, and survives a callback that throws', async () => {
+    search('mangadex').mockResolvedValue(pageOf([m('a1')], 1));
+    search('mangaread').mockRejectedValue(new Error('blocked'));
+    const calls = jest.fn(() => {
+      throw new Error('screen is gone');
+    });
+    const res = await searchAll(searchOpts({ title: 'x' }), undefined, calls);
+    expect(calls).toHaveBeenCalledTimes(1); // only mangadex had something to show
+    expect(ids(res.items)).toEqual(['a1']);
+  });
+
   it('skips a source that fails and still returns the others', async () => {
     search('mangadex').mockResolvedValue(pageOf([m('a1')], 1));
     search('vortex').mockRejectedValue(new Error('blocked'));
