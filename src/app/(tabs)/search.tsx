@@ -126,7 +126,14 @@ export default function SearchScreen() {
         if (source === 'all' && debounced) {
           // Search every source at once and merge the results.
           if (offset === 0) multiState.current = undefined;
-          const res = await searchAll({ ...base, offset: 0 }, multiState.current);
+          // On a fresh search, show each source's results the moment it answers instead of waiting for the slowest one.
+          const onProgress =
+            offset === 0
+              ? (partial: Manga[]) => {
+                  if (id === requestId.current) setItems(partial);
+                }
+              : undefined;
+          const res = await searchAll({ ...base, offset: 0 }, multiState.current, onProgress);
           if (id !== requestId.current) return;
           multiState.current = res.state;
           pageItems = res.items;

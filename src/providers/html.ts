@@ -12,13 +12,16 @@ const HEADERS = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Be polite: at most ~2 requests per second across all HTML sources.
+// Be polite: at most ~2 requests per second to any one website. Each website has its own limit, so a slow or busy
+// site (for example one that is building a list of all its titles) never makes the others wait in line.
 const MIN_GAP = 500;
-let nextSlot = 0;
-async function throttle() {
+const nextSlot = new Map<string, number>();
+const originOf = (url: string) => url.match(/^https?:\/\/[^/?#]+/i)?.[0].toLowerCase() ?? '';
+async function throttle(url: string) {
+  const site = originOf(url);
   const now = Date.now();
-  const start = Math.max(now, nextSlot);
-  nextSlot = start + MIN_GAP;
+  const start = Math.max(now, nextSlot.get(site) ?? 0);
+  nextSlot.set(site, start + MIN_GAP);
   if (start > now) await sleep(start - now);
 }
 
@@ -26,7 +29,7 @@ async function throttle() {
  * Fetch a page as text. Pass `form` to submit a plain HTML form (POST, as a browser does for a site's search box).
  */
 export async function getHtmlText(url: string, siteName: string, attempt = 0, form?: Record<string, string>): Promise<string> {
-  await throttle();
+  await throttle(url);
   let res: Response;
   try {
     res = await fetch(

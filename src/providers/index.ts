@@ -104,6 +104,15 @@ async function keepType(p: Provider, items: Manga[], type: MangaType): Promise<M
     .filter((m) => m.type === type);
 }
 
+/** Round-robin interleave (best match of each source first), so no single source floods the top of the list. */
+function interleave(lists: Manga[][]): Manga[] {
+  const items: Manga[] = [];
+  for (let i = 0; lists.some((l) => i < l.length); i++) {
+    for (const l of lists) if (i < l.length) items.push(l[i]);
+  }
+  return items;
+}
+
 /** Paging state for `searchAll`: how far each source has been read, and which are exhausted or failed. */
 export interface MultiSearchState {
   offsets: Record<string, number>;
@@ -118,14 +127,31 @@ export interface MultiSearchState {
 export async function searchAll(
   opts: SearchOptions & { kind?: ContentKind },
   state: MultiSearchState = { offsets: {}, done: [] },
+  /** Called with everything found so far each time another source answers, so the screen can fill in as results arrive. */
+  onProgress?: (items: Manga[]) => void,
 ): Promise<{ items: Manga[]; state: MultiSearchState; hasMore: boolean }> {
   const mature = opts.ratings.includes('pornographic'); // 18+ sources only take part when mature titles are on
   const kind = opts.kind ?? 'manga';
   const usable = (p: Provider) =>
     kindOfProvider(p) === kind && !state.done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult);
   const active = providers.filter(usable);
-  const settled = await Promise.allSettled(
-    active.map((p) => searchManga({ ...opts, provider: p.id, offset: state.offsets[p.id] ?? 0 })),
+  const answers: (PromiseSettledResult<Page<Manga>> | undefined)[] = active.map(() => undefined);
+  const settled = await Promise.all(
+    active.map(async (p, i) => {
+      const result = await searchManga({ ...opts, provider: p.id, offset: state.offsets[p.id] ?? 0 }).then(
+        (value): PromiseSettledResult<Page<Manga>> => ({ status: 'fulfilled', value }),
+        (reason): PromiseSettledResult<Page<Manga>> => ({ status: 'rejected', reason }),
+      );
+      answers[i] = result;
+      if (onProgress && result.status === 'fulfilled' && result.value.items.length > 0) {
+        try {
+          onProgress(interleave(answers.flatMap((r) => (r?.status === 'fulfilled' ? [r.value.items] : []))));
+        } catch {
+          // a screen that fails to show partial results must not break the search itself
+        }
+      }
+      return result;
+    }),
   );
 
   const offsets = { ...state.offsets };
@@ -148,11 +174,7 @@ export async function searchAll(
   // Every source failed on the very first page: surface the error instead of "nothing found".
   if (active.length > 0 && lists.length === 0 && Object.keys(state.offsets).length === 0) throw firstError;
 
-  // Round-robin interleave so no single source floods the top of the list.
-  const items: Manga[] = [];
-  for (let i = 0; lists.some((l) => i < l.length); i++) {
-    for (const l of lists) if (i < l.length) items.push(l[i]);
-  }
+  const items = interleave(lists);
   const hasMore = providers.some((p) => kindOfProvider(p) === kind && !done.includes(p.id) && p.languages.some((l) => l.code === opts.language) && (mature || !p.adult));
   return { items, state: { offsets, done }, hasMore };
 }
