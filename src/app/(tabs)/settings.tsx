@@ -251,6 +251,12 @@ export default function SettingsScreen() {
           />
         )}
         <Row icon="moon-outline" title="ShadowMoon" subtitle={`Version ${Constants.expoConfig?.version ?? '1.0.0'} · no ads, no tracking`} />
+        <Row
+          icon="cloud-download-outline"
+          title="App updates"
+          subtitle="Check for a new version and watch it download."
+          onPress={() => router.push('/app-update')}
+        />
       </Group>
     </ScrollView>
   );

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { View } from 'react-native';
 
+import { UpdateOverlay } from '../components/UpdateOverlay';
 import { AppearanceProvider, useScheme } from '../store/appearance';
 import { AuthProvider } from '../store/auth';
 import { LibraryProvider } from '../store/library';
@@ -62,9 +63,12 @@ function ThemedNavigator() {
             options={{ headerShown: false, animation: 'fade', gestureEnabled: true }}
           />
           <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+          <Stack.Screen name="app-update" options={{ title: 'App updates' }} />
           <Stack.Screen name="auth/login" options={{ title: 'Sign in', presentation: 'modal' }} />
           <Stack.Screen name="auth/register" options={{ title: 'Create account', presentation: 'modal' }} />
         </Stack>
+        {/* When a new version is found at start-up, this covers the app with a download screen and a progress bar. */}
+        <UpdateOverlay />
       </ThemeProvider>
     </View>
   );
