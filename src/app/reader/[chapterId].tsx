@@ -30,6 +30,7 @@ import {
 import { NovelReader } from '../../components/NovelReader';
 import { Button, ErrorView, Loading } from '../../components/ui';
 import { useAsync } from '../../hooks/useAsync';
+import { PREFETCH_AHEAD, prefetchPages } from '../../utils/prefetch';
 import { toLite, useLibrary } from '../../store/library';
 import { colors as appColors, darkColors as colors, radius, spacing } from '../../theme';
 
@@ -51,26 +52,48 @@ function Reader({ chapterId, mangaId }: { chapterId: string; mangaId: string }) 
   const insets = useSafeAreaInsets();
   const [pageToken, setPageToken] = useState(0);
 
+  // The pictures come first: the page addresses and the title are fetched together, and the reader opens as soon as
+  // they are ready. The chapter list (only needed for Prev/Next and the read marker) loads after that, in the
+  // background; before, the first page waited for it, which on a big series or a slow connection took seconds.
   const q = useAsync(async () => {
     const [manga, pages] = await Promise.all([getMangaCached(mangaId), getChapterPages(mangaId, chapterId, dataSaver)]);
-    const chapters = await getChaptersCached(manga, language);
-    return { manga, chapters, pages };
-  }, [chapterId, mangaId, language, dataSaver]);
+    return { manga, pages };
+  }, [chapterId, mangaId, dataSaver]);
+  const manga = q.data?.manga;
+  const chaptersQ = useAsync(async () => (manga ? getChaptersCached(manga, language) : undefined), [manga?.id, language]);
 
   // The image server URL expires after a while; re-request it if images start failing.
   // Remember which chapter the refreshed pages belong to, so they are ignored automatically after navigating.
   const [fresh, setFresh] = useState<{ chapterId: string; pages: string[] } | null>(null);
   const freshPages = fresh?.chapterId === chapterId ? fresh.pages : null;
+  // Many pages can fail at the same moment (a bad connection), and each one asks for a refresh. Without a guard that
+  // starts a refresh per page and restarts the whole reader every time, reloading every image again and again. So:
+  // only one refresh at a time, not more than once every 15 s, and the reader restarts only if the addresses changed.
+  const pagesRef = useRef<string[]>([]);
+  const refreshing = useRef(false);
+  const lastRefresh = useRef(0);
   const refreshPages = useCallback(async () => {
+    if (refreshing.current || Date.now() - lastRefresh.current < 15_000) return;
+    refreshing.current = true;
+    lastRefresh.current = Date.now();
     try {
-      setFresh({ chapterId, pages: await getChapterPages(mangaId, chapterId, dataSaver) });
-      setPageToken((t) => t + 1);
-    } catch {}
+      const pages = await getChapterPages(mangaId, chapterId, dataSaver);
+      if (pages.join('\n') !== pagesRef.current.join('\n')) {
+        setFresh({ chapterId, pages });
+        setPageToken((t) => t + 1);
+      }
+    } catch {
+    } finally {
+      refreshing.current = false;
+    }
   }, [mangaId, chapterId, dataSaver]);
 
-  const manga = q.data?.manga;
-  const chapters = q.data?.chapters;
-  const pages = freshPages ?? q.data?.pages ?? [];
+  const chapters = chaptersQ.data;
+  const loadedPages = q.data?.pages;
+  const pages = useMemo(() => freshPages ?? loadedPages ?? [], [freshPages, loadedPages]);
+  useEffect(() => {
+    pagesRef.current = pages;
+  });
   const index = chapters?.findIndex((c) => c.id === chapterId) ?? -1;
   const chapter: Chapter | undefined = index >= 0 ? chapters![index] : undefined;
   const prev = index > 0 ? chapters![index - 1] : undefined;
@@ -83,6 +106,20 @@ function Reader({ chapterId, mangaId }: { chapterId: string; mangaId: string }) 
   const [uiVisible, setUiVisible] = useState(true);
   const [page, setPage] = useState(0);
   const toggleUi = useCallback(() => setUiVisible((v) => !v), []);
+
+  // Download the next few pages to disk while the current one is being read, so they are already there when the
+  // reader scrolls to them. Near the end, also fetch the first pages of the next chapter.
+  useEffect(() => {
+    prefetchPages(pages, page + 1, PREFETCH_AHEAD);
+  }, [pages, page]);
+  const nextPrefetched = useRef<string | null>(null);
+  useEffect(() => {
+    if (!next || !isReadable(next) || pages.length === 0 || page < pages.length - 3 || nextPrefetched.current === next.id) return;
+    nextPrefetched.current = next.id;
+    getChapterPages(mangaId, next.id, dataSaver)
+      .then((p) => prefetchPages(p, 0, 3))
+      .catch(() => {});
+  }, [next, pages.length, page, mangaId, dataSaver]);
 
   // Record "currently reading" as soon as we know which chapter this is.
   const opened = useRef<string | null>(null);
@@ -265,9 +302,11 @@ function VerticalReader({ pages, onTap, onPage, onImageError, footer }: {
       ListFooterComponent={footer}
       onViewableItemsChanged={onViewable}
       viewabilityConfig={VIEWABILITY}
-      initialNumToRender={3}
-      maxToRenderPerBatch={3}
-      windowSize={9}
+      // Each page can be several screens tall, so keep only a small window of them mounted (it was 9 screens' worth,
+      // which with 40-90 MB pages meant several hundred MB of pictures at once).
+      initialNumToRender={2}
+      maxToRenderPerBatch={2}
+      windowSize={5}
       showsVerticalScrollIndicator={false}
     />
   );
@@ -304,11 +343,17 @@ const VerticalPage = memo(function VerticalPage({ url, index, width, ratio, onLo
           <Text style={styles.pageNumber}>Couldn&apos;t load page {index + 1} · tap to retry</Text>
         </Pressable>
       ) : (
+        // Pages are often one very tall strip (10,000-16,000 px, 30-70 MB once decoded), so memory is what runs out:
+        //  - "cover" fits the box exactly (its height comes from the image's own ratio) and, unlike "fill", lets the
+        //    image library shrink a big image to the screen size while decoding;
+        //  - "disk" keeps the downloaded file but not the decoded picture, so scrolling past pages frees their memory;
+        //  - "rgb" decodes with 2 bytes per pixel instead of 4 on Android (half the memory; a little less colour depth).
         <Image
           source={url}
           style={{ width, height }}
-          contentFit="fill"
-          cachePolicy="memory-disk"
+          contentFit="cover"
+          cachePolicy="disk"
+          decodeFormat="rgb"
           recyclingKey={url}
           onLoad={(e) => onLoad(index, e.source.width, e.source.height)}
           onError={() => setFailed(true)}
